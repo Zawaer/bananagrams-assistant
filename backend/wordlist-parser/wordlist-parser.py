@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Nykysuomen sanalista parser for Bananagrams
 Converts Kotimaisten kielten keskus word list to a filtered format for Bananagrams game.
@@ -9,7 +8,7 @@ License: Creative Commons Nimeä 4.0 Kansainvälinen (CC BY 4.0)
 
 import time
 import csv
-from typing import Set, Dict, List, Tuple, Optional
+from typing import List, Tuple, Optional
 
 
 # ============================================================================
@@ -17,12 +16,13 @@ from typing import Set, Dict, List, Tuple, Optional
 # ============================================================================
 
 # Word categories to include
-ACCEPT_PRONOUNS = False
-ACCEPT_NUMERALS = False
-ACCEPT_SUBSTANTIVES = True  # substantiivi (nouns)
-ACCEPT_ADJECTIVES = True    # adjektiivi (adjectives)
-ACCEPT_VERBS = True         # verbi (verbs)
-ACCEPT_COMPOUND_WORDS = True  # yhdyssanat (compound words without inflection info)
+ACCEPT_PRONOUNS = False         # pronominit (esim. sinä)
+ACCEPT_INTERJECTIONS = False    # huudahdukset (esim. auts)
+ACCEPT_NUMERALS = True         # numeraalit (esim. kolme)
+ACCEPT_SUBSTANTIVES = True      # substantiivit (esim. tuoli)
+ACCEPT_ADJECTIVES = True        # adjektiivit (esim. punainen)
+ACCEPT_VERBS = True             # verbit (esim. juosta)
+ACCEPT_COMPOUND_WORDS = True    # yhdyssanat (compound words without inflection info)
 
 # Finnish Bananagrams character distribution (144 tiles total)
 BANANAGRAMS_TILES = {
@@ -70,9 +70,9 @@ def is_valid_category(category: str, inflection: str) -> bool:
         # Check combined forms like "adverbi + kieltoverbi"
         if '+' in category or 'kieltoverbi' in category:
             return False
-        # Interjections are okay as standalone exclamations
+        # Interjections are okay as standalone exclamations when enabled
         if category == 'interjektio':
-            return True
+            return ACCEPT_INTERJECTIONS
         # Other particles typically rejected
         return False
     
@@ -85,10 +85,9 @@ def is_valid_category(category: str, inflection: str) -> bool:
         return ACCEPT_NUMERALS
     
     # Reject words with special inflection codes:
-    # 99 = doesn't inflect or inflects incompletely
     # 100 = misspelled (correct spelling in dictionary article)
     # 101 = pronoun with irregular inflection
-    if inflection in ['99', '100', '101']:
+    if inflection in ['100', '101']:
         return False
     
     # Check main word categories
@@ -248,17 +247,16 @@ def parse_dictionary(input_file: str, output_file: str) -> None:
         end_time = time.time()
         duration = end_time - start_time
         
-        print(f'\n✅ Parsing complete!')
-        print(f'📊 Processed: {words_processed:,} words')
-        print(f'💾 Saved: {words_written:,} words to {output_file}')
-        print(f'⏱️  Time: {duration:.2f} seconds')
-        print(f'📈 Efficiency: {words_processed/duration:.0f} words/second')
+        print(f'\nParsing complete!')
+        print(f'Processed: {words_processed:,} words')
+        print(f'Saved: {words_written:,} words to {output_file}')
+        print(f'Time: {duration:.2f} seconds')
         
     except FileNotFoundError:
-        print(f'❌ Error: Could not find input file {input_file}')
+        print(f'Error: Could not find input file {input_file}')
         raise
     except Exception as e:
-        print(f'❌ Error during parsing: {e}')
+        print(f'Error during parsing: {e}')
         raise
 
 
@@ -267,4 +265,4 @@ def parse_dictionary(input_file: str, output_file: str) -> None:
 # ============================================================================
 
 if __name__ == '__main__':
-    parse_dictionary('dictionary.csv', 'wordlist.txt')
+    parse_dictionary('nykysuomensanalista2024.txt', 'wordlist.txt')
