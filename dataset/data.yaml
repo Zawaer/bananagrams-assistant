@@ -1,0 +1,6 @@
+train: train/images
+val: valid/images
+test: test/images
+
+nc: 22
+names: ['a', 'a_dot', 'b', 'd', 'e', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'o_dot', 'p', 'r', 's', 't', 'u', 'v', 'y']
