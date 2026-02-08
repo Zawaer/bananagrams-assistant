@@ -3,7 +3,6 @@ Nykysuomen sanalista parser for Bananagrams
 Converts Kotimaisten kielten keskus word list to a filtered format for Bananagrams game.
 
 Source: https://kaino.kotus.fi/lataa/nykysuomensanalista2024.txt
-License: Creative Commons Nimeä 4.0 Kansainvälinen (CC BY 4.0)
 """
 
 import time
@@ -18,21 +17,21 @@ from typing import List, Tuple, Optional
 # Word categories to include
 ACCEPT_PRONOUNS = False         # pronominit (esim. sinä)
 ACCEPT_INTERJECTIONS = False    # huudahdukset (esim. auts)
-ACCEPT_NUMERALS = True         # numeraalit (esim. kolme)
+ACCEPT_NUMERALS = True              # numeraalit (esim. kolme)
 ACCEPT_SUBSTANTIVES = True      # substantiivit (esim. tuoli)
 ACCEPT_ADJECTIVES = True        # adjektiivit (esim. punainen)
 ACCEPT_VERBS = True             # verbit (esim. juosta)
 ACCEPT_COMPOUND_WORDS = True    # yhdyssanat (compound words without inflection info)
 
 # Finnish Bananagrams character distribution (144 tiles total)
-BANANAGRAMS_TILES = {
+BANANAGRAMS_TILE_DISTRIBUTION = {
     'a': 16, 'b': 1, 'd': 1, 'e': 12, 'g': 1, 'h': 3,
     'i': 15, 'j': 3, 'k': 8, 'l': 8, 'm': 5, 'n': 12,
     'o': 8, 'p': 2, 'r': 3, 's': 11, 't': 14, 'u': 7,
     'v': 4, 'y': 2, 'ä': 7, 'ö': 1
 }
 
-ALLOWED_CHARS = set(BANANAGRAMS_TILES.keys())
+ALLOWED_CHARS = set(BANANAGRAMS_TILE_DISTRIBUTION.keys())
 
 
 # ============================================================================
@@ -47,7 +46,7 @@ def contains_only_allowed_chars(word: str) -> bool:
 def fits_tile_distribution(word: str) -> bool:
     """Check if word can be made with available Bananagrams tiles."""
     for char in set(word):
-        if word.count(char) > BANANAGRAMS_TILES[char]:
+        if word.count(char) > BANANAGRAMS_TILE_DISTRIBUTION[char]:
             return False
     return True
 
@@ -261,7 +260,7 @@ def parse_dictionary(input_file: str, output_file: str) -> None:
 
 
 # ============================================================================
-# ENTRY POINT
+# MAIN
 # ============================================================================
 
 if __name__ == '__main__':
