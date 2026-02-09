@@ -21,25 +21,25 @@
 class WordUtil
 {
 public:
-    WordUtil() : longestWordLength(1) {}
-    WordUtil(const std::string& wordListFilename);
+    WordUtil() : longest_word_length(1) {}
+    WordUtil(const std::string& word_list_filename);
 
-    std::wstring GetWordWithLength(const std::wstring& hand, int length);
+    std::wstring getWordWithLength(const std::wstring& hand, int length);
 
-    std::string wordListFilename;
-    int longestWordLength;
+    std::string word_list_filename;
+    int longest_word_length;
     std::vector<std::wstring> words;
     std::unordered_map<std::wstring, std::vector<std::wstring>> anagrams;
     std::vector<std::pair<wchar_t, int>> letter_frequencies;
 };
 
-WordUtil::WordUtil(const std::string& wordListFilename) : wordListFilename(wordListFilename), longestWordLength(1)
+WordUtil::WordUtil(const std::string& word_list_filename) : word_list_filename(word_list_filename), longest_word_length(1)
 {
     // Check if file exists
-    std::wifstream stream(wordListFilename);
+    std::wifstream stream(word_list_filename);
     if (!stream.is_open() || !stream.good()) {
-        std::cerr << "Error: Could not open wordlist file: " << wordListFilename << std::endl;
-        throw std::runtime_error("Failed to load wordlist: " + wordListFilename);
+        std::cerr << "Error: Could not open wordlist file: " << word_list_filename << std::endl;
+        throw std::runtime_error("Failed to load wordlist: " + word_list_filename);
     }
     
     stream.imbue(std::locale(std::locale(), new std::codecvt_utf8<wchar_t>));
@@ -55,8 +55,8 @@ WordUtil::WordUtil(const std::string& wordListFilename) : wordListFilename(wordL
 
         if (line.empty()) continue;
 
-        if ((int)line.length() > longestWordLength)
-            longestWordLength = (int)line.length();
+        if ((int)line.length() > longest_word_length)
+            longest_word_length = (int)line.length();
 
         words.emplace_back(line);
         anagrams[utils::sort(line)].emplace_back(line);
@@ -74,29 +74,29 @@ WordUtil::WordUtil(const std::string& wordListFilename) : wordListFilename(wordL
             return a.second < b.second;
         });
 
-    std::cout << "Loaded " << words.size() << " words from " << wordListFilename << std::endl;
+    std::cout << "Loaded " << words.size() << " words from " << word_list_filename << std::endl;
 }
 
-std::wstring WordUtil::GetWordWithLength(const std::wstring& hand, int length)
+std::wstring WordUtil::getWordWithLength(const std::wstring& hand, int length)
 {
-    for (const auto& [sortedWord, wordList] : anagrams)
+    for (const auto& [sorted_word, word_list] : anagrams)
     {
-        for (const auto& word : wordList)
+        for (const auto& word : word_list)
         {
             if ((int)word.length() != length) continue;
 
-            bool canMakeWord = true;
+            bool can_make_word = true;
             for (size_t i = 0; i < word.length(); i++)
             {
                 wchar_t c = word[i];
                 if (std::count(word.begin(), word.end(), c) > std::count(hand.begin(), hand.end(), c))
                 {
-                    canMakeWord = false;
+                    can_make_word = false;
                     break;
                 }
             }
 
-            if (canMakeWord)
+            if (can_make_word)
                 return word;
         }
     }
@@ -114,7 +114,7 @@ public:
     Hand() {}
     Hand(const std::wstring& tiles) : tiles(utils::tolower(tiles)) {}
 
-    void RemoveWordFromTiles(const std::wstring& word)
+    void removeWordFromTiles(const std::wstring& word)
     {
         for (size_t i = 0; i < word.length(); i++)
         {
@@ -135,59 +135,59 @@ class Board
 {
 public:
     Board() {}
-    Board(WordUtil wordUtil, bool acceptDuplicates = false);
+    Board(WordUtil wordUtil, bool accept_duplicates = false);
 
-    void Reset();
-    std::wstring GetTiles();
-    bool PlaceFirstWord(int length);
-    bool InsertWord(const std::wstring& word, int x, int y, bool isHorizontal, std::vector<int> seedXY);
-    bool FindSpotForWord(const std::wstring& word, const wchar_t& seed);
-    void RemoveWordFromWordlist(const std::wstring& word);
+    void reset();
+    std::wstring getTiles();
+    bool placeFirstWord(int length);
+    bool insertWord(const std::wstring& word, int x, int y, bool is_horizontal, std::vector<int> seed_xy);
+    bool findSpotForWord(const std::wstring& word, const wchar_t& seed);
+    void removeWordFromWordlist(const std::wstring& word);
 
-    bool StartSolver();
-    bool Solver();
+    bool startSolver();
+    bool solver();
 
     // Returns the trimmed grid as a 2D vector of single-char strings (UTF-8), empty string for empty cells
-    std::vector<std::vector<std::string>> GetResultGrid();
+    std::vector<std::vector<std::string>> getResultGrid();
 
     std::vector<std::vector<std::wstring>> grid;
     Hand hand;
     WordUtil wordUtil;
 
 private:
-    int MAX_GRID_SIZE = 0;
-    bool acceptDuplicates = false;
-    std::vector<std::wstring> removedWords;
+    int max_grid_size = 0;
+    bool accept_duplicates = false;
+    std::vector<std::wstring> removed_words;
 };
 
-Board::Board(WordUtil wordUtil, bool acceptDuplicates)
-    : wordUtil(wordUtil), acceptDuplicates(acceptDuplicates)
+Board::Board(WordUtil wordUtil, bool accept_duplicates)
+    : wordUtil(wordUtil), accept_duplicates(accept_duplicates)
 {
-    Reset();
+    reset();
 }
 
-void Board::Reset()
+void Board::reset()
 {
-    MAX_GRID_SIZE = (int)hand.tiles.length() * 2;
-    if (MAX_GRID_SIZE < 10) MAX_GRID_SIZE = 10;
+    max_grid_size = (int)hand.tiles.length() * 2;
+    if (max_grid_size < 10) max_grid_size = 10;
 
     grid.clear();
-    for (int i = 0; i < MAX_GRID_SIZE; i++)
+    for (int i = 0; i < max_grid_size; i++)
     {
-        std::vector<std::wstring> row(MAX_GRID_SIZE, L"");
+        std::vector<std::wstring> row(max_grid_size, L"");
         grid.emplace_back(row);
     }
 
     // restore removed words
-    for (const auto& word : removedWords)
+    for (const auto& word : removed_words)
     {
         wordUtil.words.emplace_back(word);
         wordUtil.anagrams[utils::sort(word)].emplace_back(word);
     }
-    removedWords.clear();
+    removed_words.clear();
 }
 
-std::wstring Board::GetTiles()
+std::wstring Board::getTiles()
 {
     std::wstring tiles;
     for (const auto& row : grid)
@@ -196,100 +196,100 @@ std::wstring Board::GetTiles()
     return tiles;
 }
 
-bool Board::PlaceFirstWord(int length)
+bool Board::placeFirstWord(int length)
 {
-    std::wstring word = wordUtil.GetWordWithLength(hand.tiles, length);
+    std::wstring word = wordUtil.getWordWithLength(hand.tiles, length);
     if (word.empty()) return false;
 
-    int x = (int)(MAX_GRID_SIZE / 2 - word.length() / 2);
-    int y = (int)(MAX_GRID_SIZE / 2);
-    bool success = InsertWord(word, x, y, true, {-1, -1});
+    int x = (int)(max_grid_size / 2 - word.length() / 2);
+    int y = (int)(max_grid_size / 2);
+    bool success = insertWord(word, x, y, true, {-1, -1});
     if (!success) return false;
 
-    RemoveWordFromWordlist(word);
-    hand.RemoveWordFromTiles(word);
+    removeWordFromWordlist(word);
+    hand.removeWordFromTiles(word);
     return true;
 }
 
-bool Board::InsertWord(const std::wstring& word, int x, int y, bool isHorizontal, std::vector<int> seedXY)
+bool Board::insertWord(const std::wstring& word, int x, int y, bool is_horizontal, std::vector<int> seed_xy)
 {
-    std::vector<std::vector<std::wstring>> newGrid = grid;
+    std::vector<std::vector<std::wstring>> new_grid = grid;
 
-    if (isHorizontal)
+    if (is_horizontal)
     {
-        for (int xIndex = x, i = 0; i < (int)word.size(); ++xIndex, ++i)
+        for (int x_index = x, i = 0; i < (int)word.size(); ++x_index, ++i)
         {
-            if (xIndex < 0 || xIndex >= MAX_GRID_SIZE || y < 1 || y >= MAX_GRID_SIZE - 1)
+            if (x_index < 0 || x_index >= max_grid_size || y < 1 || y >= max_grid_size - 1)
                 return false;
 
-            if (xIndex == seedXY[0] && y == seedXY[1])
+            if (x_index == seed_xy[0] && y == seed_xy[1])
             {
-                if (xIndex + 1 < MAX_GRID_SIZE && !newGrid[y][xIndex + 1].empty())
+                if (x_index + 1 < max_grid_size && !new_grid[y][x_index + 1].empty())
                     return false;
                 continue;
             }
 
-            if (!newGrid[y][xIndex].empty())
+            if (!new_grid[y][x_index].empty())
                 return false;
 
-            newGrid[y][xIndex] = word[i];
+            new_grid[y][x_index] = word[i];
 
-            if (!newGrid[y - 1][xIndex].empty() || !newGrid[y + 1][xIndex].empty())
+            if (!new_grid[y - 1][x_index].empty() || !new_grid[y + 1][x_index].empty())
                 return false;
         }
     }
     else
     {
-        for (int yIndex = y, i = 0; i < (int)word.size(); ++yIndex, ++i)
+        for (int y_index = y, i = 0; i < (int)word.size(); ++y_index, ++i)
         {
-            if (yIndex < 1 || yIndex >= MAX_GRID_SIZE - 1 || x < 1 || x >= MAX_GRID_SIZE - 1)
+            if (y_index < 1 || y_index >= max_grid_size - 1 || x < 1 || x >= max_grid_size - 1)
                 return false;
 
-            if (x == seedXY[0] && yIndex == seedXY[1])
+            if (x == seed_xy[0] && y_index == seed_xy[1])
             {
-                if (yIndex + 1 < MAX_GRID_SIZE && !newGrid[yIndex + 1][x].empty())
+                if (y_index + 1 < max_grid_size && !new_grid[y_index + 1][x].empty())
                     return false;
                 continue;
             }
 
-            if (!newGrid[yIndex][x].empty())
+            if (!new_grid[y_index][x].empty())
                 return false;
 
-            newGrid[yIndex][x] = word[i];
+            new_grid[y_index][x] = word[i];
 
-            if (!newGrid[y - 1][x].empty() || (y + (int)word.size() + 1 < MAX_GRID_SIZE && !newGrid[y + (int)word.size() + 1][x].empty()))
+            if (!new_grid[y - 1][x].empty() || (y + (int)word.size() + 1 < max_grid_size && !new_grid[y + (int)word.size() + 1][x].empty()))
                 return false;
 
-            if (!newGrid[yIndex][x - 1].empty())
+            if (!new_grid[y_index][x - 1].empty())
                 return false;
 
-            if (!newGrid[yIndex][x + 1].empty() && newGrid[yIndex][x - 1].empty() && (x + 2 < MAX_GRID_SIZE && newGrid[yIndex][x + 2].empty()))
+            if (!new_grid[y_index][x + 1].empty() && new_grid[y_index][x - 1].empty() && (x + 2 < max_grid_size && new_grid[y_index][x + 2].empty()))
                 return false;
         }
     }
 
-    grid = newGrid;
+    grid = new_grid;
     return true;
 }
 
-void Board::RemoveWordFromWordlist(const std::wstring& word)
+void Board::removeWordFromWordlist(const std::wstring& word)
 {
-    if (acceptDuplicates) return;
+    if (accept_duplicates) return;
 
     wordUtil.words.erase(std::remove(wordUtil.words.begin(), wordUtil.words.end(), word), wordUtil.words.end());
 
-    std::wstring sortedWord = utils::sort(word);
-    auto& anagramList = wordUtil.anagrams[sortedWord];
-    anagramList.erase(std::remove(anagramList.begin(), anagramList.end(), word), anagramList.end());
+    std::wstring sorted_word = utils::sort(word);
+    auto& anagram_list = wordUtil.anagrams[sorted_word];
+    anagram_list.erase(std::remove(anagram_list.begin(), anagram_list.end(), word), anagram_list.end());
 
-    removedWords.emplace_back(word);
+    removed_words.emplace_back(word);
 }
 
-bool Board::FindSpotForWord(const std::wstring& word, const wchar_t& seed)
+bool Board::findSpotForWord(const std::wstring& word, const wchar_t& seed)
 {
     if (seed == L' ') return false;
 
-    if (!acceptDuplicates)
+    if (!accept_duplicates)
     {
         if (std::find(wordUtil.words.begin(), wordUtil.words.end(), word) == wordUtil.words.end())
             return false;
@@ -303,18 +303,18 @@ bool Board::FindSpotForWord(const std::wstring& word, const wchar_t& seed)
             if (seed != grid[row][col][0]) continue;
 
             // try vertical
-            int vY = row - (int)word.find(seed);
-            if (InsertWord(word, col, vY, false, { col, row }))
+            int v_y = row - (int)word.find(seed);
+            if (insertWord(word, col, v_y, false, { col, row }))
             {
-                RemoveWordFromWordlist(word);
+                removeWordFromWordlist(word);
                 return true;
             }
 
             // try horizontal
-            int hX = col - (int)word.find(seed);
-            if (InsertWord(word, hX, row, true, { col, row }))
+            int h_x = col - (int)word.find(seed);
+            if (insertWord(word, h_x, row, true, { col, row }))
             {
-                RemoveWordFromWordlist(word);
+                removeWordFromWordlist(word);
                 return true;
             }
         }
@@ -323,7 +323,7 @@ bool Board::FindSpotForWord(const std::wstring& word, const wchar_t& seed)
     return false;
 }
 
-bool Board::StartSolver()
+bool Board::startSolver()
 {
     if ((int)hand.tiles.length() > 144)
     {
@@ -331,48 +331,48 @@ bool Board::StartSolver()
         return false;
     }
 
-    std::wstring originalHand = hand.tiles;
-    bool solutionFound = false;
+    std::wstring original_hand = hand.tiles;
+    bool solution_found = false;
 
-    int firstWordLength = (int)hand.tiles.length() > wordUtil.longestWordLength
-        ? wordUtil.longestWordLength
+    int first_word_length = (int)hand.tiles.length() > wordUtil.longest_word_length
+        ? wordUtil.longest_word_length
         : (int)hand.tiles.length();
 
-    for (; firstWordLength > 1; --firstWordLength)
+    for (; first_word_length > 1; --first_word_length)
     {
-        hand.tiles = originalHand;
-        Reset();
+        hand.tiles = original_hand;
+        reset();
 
-        if (!PlaceFirstWord(firstWordLength)) continue;
+        if (!placeFirstWord(first_word_length)) continue;
 
-        if (Solver() || hand.tiles.empty())
+        if (solver() || hand.tiles.empty())
         {
-            solutionFound = true;
+            solution_found = true;
             break;
         }
     }
 
-    return solutionFound;
+    return solution_found;
 }
 
-bool Board::Solver()
+bool Board::solver()
 {
-    for (int wordLength = (int)hand.tiles.size() + 1; wordLength > 1; --wordLength)
+    for (int word_length = (int)hand.tiles.size() + 1; word_length > 1; --word_length)
     {
-        std::wstring boardTiles = GetTiles();
-        for (const wchar_t& tile : boardTiles)
+        std::wstring board_tiles = getTiles();
+        for (const wchar_t& tile : board_tiles)
         {
-            std::wstring word = wordUtil.GetWordWithLength(hand.tiles + tile, wordLength);
+            std::wstring word = wordUtil.getWordWithLength(hand.tiles + tile, word_length);
             if (word.empty()) continue;
 
-            if (!FindSpotForWord(word, tile)) continue;
+            if (!findSpotForWord(word, tile)) continue;
 
-            auto tilePos = word.find(tile);
-            if (tilePos == std::wstring::npos) continue;
+            auto tile_pos = word.find(tile);
+            if (tile_pos == std::wstring::npos) continue;
 
-            hand.RemoveWordFromTiles(word.replace(tilePos, 1, L""));
+            hand.removeWordFromTiles(word.replace(tile_pos, 1, L""));
 
-            if (Solver() || hand.tiles.empty())
+            if (solver() || hand.tiles.empty())
                 return true;
         }
     }
@@ -380,7 +380,7 @@ bool Board::Solver()
     return false;
 }
 
-std::vector<std::vector<std::string>> Board::GetResultGrid()
+std::vector<std::vector<std::string>> Board::getResultGrid()
 {
     // Find boundaries
     int min_row = (int)grid.size(), min_col = (int)grid[0].size();

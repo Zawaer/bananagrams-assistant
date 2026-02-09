@@ -178,9 +178,9 @@ void handleClient(int clientFd)
 
         Board board(*g_wordUtil);
         board.hand = Hand(utils::string2wstring(letters));
-        board.Reset();
+        board.reset();
 
-        bool found = board.StartSolver();
+        bool found = board.startSolver();
         timer.Stop();
 
         if (!found)
@@ -192,7 +192,7 @@ void handleClient(int clientFd)
         else
         {
             std::cout << "Solution found in " << timer.GetMS() << "ms" << std::endl;
-            auto resultGrid = board.GetResultGrid();
+            auto resultGrid = board.getResultGrid();
             std::string gridJson = gridToJson(resultGrid);
             std::string resp = "{\"solved\":true,\"time_ms\":" + std::to_string(timer.GetMS()) + ",\"grid\":" + gridJson + "}";
             sendResponse(clientFd, 200, "OK", resp);
@@ -242,7 +242,7 @@ int main(int argc, char* argv[])
     if (bind(serverFd, (sockaddr*)&addr, sizeof(addr)) < 0) { perror("bind"); return 1; }
     if (listen(serverFd, 10) < 0) { perror("listen"); return 1; }
 
-    std::cout << "\nBananagrams Solver server listening on http://localhost:" << PORT << std::endl;
+    std::cout << "\nBananagrams solver server listening on http://localhost:" << PORT << std::endl;
     std::cout << "Endpoints:" << std::endl;
     std::cout << "  GET  /health       - Health check" << std::endl;
     std::cout << "  POST /solve        - Solve (body: {\"letters\": \"...\"})" << std::endl;
