@@ -7,36 +7,36 @@ A complete game assistant for Bananagrams gameplay combining computer vision til
 The assistant consists of three independent services communicating via HTTP:
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    Frontend (Next.js)                       │
-│                    Port 3000 (Turbopack)                    │
-│  ┌──────────────┐              ┌──────────────┐            │
-│  │ Setup        │──────────────│ Capture      │            │
-│  │ (tile count) │              │ (camera/img) │            │
-│  └──────────────┘              └──────────────┘            │
-│         ▲                               ▲                   │
-│         │                               │                   │
-│         └───────────────┬───────────────┘                   │
-│                         │                                    │
-└─────────────────────────┼────────────────────────────────────┘
-                          │
-        ┌─────────────────┼─────────────────┐
-        │                 │                 │
-        ▼                 ▼                 ▼
-    ┌────────┐      ┌──────────┐      ┌────────┐
-    │Solver  │      │Segmenter │      │Display │
-    │:8080   │      │:8081     │      │Results │
-    └────────┘      └──────────┘      └────────┘
-        │                 │                 │
-        └─────────────────┬─────────────────┘
-                          │
-        ┌─────────────────┼─────────────────┐
-        │                 │                 │
-        ▼                 ▼                 ▼
-   ┌─────────┐      ┌──────────┐      ┌──────────┐
-   │C++ HTTP │      │YOLO ONNX │      │Wordlist  │
-   │Server   │      │Model     │      │(Finnish) │
-   └─────────┘      └──────────┘      └──────────┘
+┌─────────────────────────────────────────────────────┐
+│                 Frontend (Next.js)                  │
+│                Port 3000 (Turbopack)                │
+│   ┌──────────────┐              ┌──────────────┐    │
+│   │ Setup        │──────────────│ Capture      │    │
+│   │ (tile count) │              │ (camera/img) │    │
+│   └──────────────┘              └──────────────┘    │
+│          ▲                               ▲          │
+│          │                               │          │
+│          └───────────────┬───────────────┘          │
+│                          │                          │
+└──────────────────────────┼──────────────────────────┘
+                           │
+         ┌─────────────────┼─────────────────┐
+         │                 │                 │
+         ▼                 ▼                 ▼
+     ┌────────┐      ┌───────────┐      ┌─────────┐
+     │ Solver │      │ Segmenter │      │ Display │
+     │ :8080  │      │ :8081     │      │ Results │
+     └────────┘      └───────────┘      └─────────┘
+         │                 │                 │
+         └─────────────────┬─────────────────┘
+                           │
+         ┌─────────────────┼─────────────────┐
+         │                 │                 │
+         ▼                 ▼                 ▼
+    ┌──────────┐     ┌───────────┐     ┌───────────┐
+    │ C++ HTTP │     │ YOLO ONNX │     │ Wordlist  │
+    │ Server   │     │ Model     │     │ (Finnish) │
+    └──────────┘     └───────────┘     └───────────┘
 ```
 
 ## Project Structure
@@ -273,27 +273,6 @@ Located in `backend/segmentation/segmentation-server.py`:
 - `CONFIDENCE_THRESHOLD = 0.8`: Minimum detection score
 - `MODEL_PATH`: Path to YOLO ONNX model (relative path)
 
-## Code Style & Conventions
-
-The codebase follows consistent naming conventions across all languages:
-
-### C++ (main.cpp, utils.h, solver.h)
-- **Classes/Structs**: `PascalCase` (e.g., `Timer`, `WordUtil`, `Board`, `Hand`)
-- **Functions**: `camelCase` (e.g., `start()`, `getMs()`, `startSolver()`)
-- **Variables**: `snake_case` (e.g., `start_time`, `client_fd`, `board_size`)
-- **Constants**: `SCREAMING_SNAKE_CASE` (e.g., `PORT`, `MAX_GRID_SIZE`)
-
-### Python (wordlist-parser.py, segmentation-server.py)
-- **Functions**: `camelCase` (e.g., `containsOnlyAllowedChars()`, `parseDictionary()`)
-- **Variables**: `snake_case` (e.g., `word_list`, `tile_count`, `homonym_buffer`)
-- **Constants**: `SCREAMING_SNAKE_CASE` (e.g., `TILE_PRESETS`, `ALLOWED_CHARS`, `NMS_THRESHOLD`)
-
-### TypeScript/React (page.tsx)
-- **Types**: `PascalCase` (e.g., `GameStep`, `DetectionResult`, `SolveResult`)
-- **Functions/Hooks**: `camelCase` (e.g., `startCamera()`, `runDetection()`)
-- **Variables**: `camelCase` (e.g., `tileCount`, `cameraActive`)
-- **Constants**: `SCREAMING_SNAKE_CASE` (e.g., `VALID_CHARS`, `DETECTION_SERVER`)
-
 ## Game Flow
 
 1. **Setup**: Choose number of tiles (10, 15, 21, or custom)
@@ -309,7 +288,7 @@ The codebase follows consistent naming conventions across all languages:
 - **Detection**: YOLO11x segmentation model trained on 100 images, 22 Finnish tile classes
 - **Performance**: ~1.8s end-to-end (image upload → detection → solution)
 - **Accuracy**: 96% average confidence on tile detection
-- **Language**: Finnish Bananagrams tiles (full support: a-z, ä, ö)
+- **Language**: Finnish Bananagrams tiles (not every letter on the alphabet)
 - **HTTP**: Custom minimal JSON implementation (C++), no external dependencies
 
 ## Performance Metrics
@@ -337,21 +316,3 @@ YOLO Internal:
 - All servers include timing breakdown for performance debugging
 - Detection stats panel shows both actual and YOLO-reported timings (collapsible UI)
 - File existence validation prevents runtime crashes
-
-## Error Handling
-
-- **Missing wordlist**: C++ server exits immediately with error message
-- **Failed detection**: Returns error response with HTTP 400
-- **File not found**: Python server logs and returns error
-- **Invalid image**: Proper error handling throughout pipeline
-- **CORS issues**: All servers include proper CORS headers
-
-## Future Improvements
-
-- [ ] Real-time detection from camera stream (not just batch uploads)
-- [ ] Support for multiple languages/tile sets
-- [ ] Inference optimization (~500ms target)
-- [ ] Mobile app version
-- [ ] Game statistics tracking
-- [ ] Support for different Bananagrams variants
-- [ ] Batch processing for multiple game sessions
