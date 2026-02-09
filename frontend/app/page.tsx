@@ -13,6 +13,22 @@ type DetectionResult = {
   letter_list: { letter: string; confidence: number }[];
   annotated_image: string; // base64
   count: number;
+  timing?: {
+    preprocess_ms: number;
+    inference_ms: number;
+    postprocess_ms: number;
+    total_ms: number;
+  };
+  yolo_timing?: {
+    preprocess_ms: number;
+    inference_ms: number;
+    postprocess_ms: number;
+  };
+  avg_confidence?: number;
+  thresholds?: {
+    nms: number;
+    confidence: number;
+  };
 };
 
 type SolveResult = {
@@ -53,6 +69,9 @@ export default function Home() {
 
   // Manual input
   const [manualInput, setManualInput] = useState("");
+
+  // Detection stats
+  const [showDetectionStats, setShowDetectionStats] = useState(false);
 
   // Solving
   const [solving, setSolving] = useState(false);
@@ -254,11 +273,10 @@ export default function Home() {
 
   return (
     <div className="flex min-h-screen flex-col items-center px-4 py-8">
-      <h1 className="mb-1 text-3xl font-bold tracking-tight" style={{ color: "var(--accent)" }}>
+      <h1 className="mb-10 text-3xl font-bold tracking-tight" style={{ color: "var(--accent)" }}>
         Bananagrams Assistant
       </h1>
-      <p className="mb-6 text-sm opacity-60">English Bananagrams assistant</p>
-
+      
       {/* ── Step indicator ── */}
       <StepIndicator current={step} />
 
@@ -497,6 +515,85 @@ export default function Home() {
             alt="Detected tiles"
             className="w-full rounded-lg"
           />
+
+          {/* Timing breakdown */}
+          {detection.timing && (
+            <div
+              className="w-full rounded-lg px-4 py-3 cursor-pointer transition-opacity hover:opacity-80"
+              style={{ background: "var(--input-bg)", border: "2px solid var(--input-border)" }}
+              onClick={() => setShowDetectionStats(!showDetectionStats)}
+            >
+              <div className="flex justify-between items-center">
+                <div className="flex gap-4 text-sm opacity-70">
+                  <div>Total: {detection.timing.total_ms} ms</div>
+                </div>
+                <span className="text-xs opacity-50">{showDetectionStats ? "▼" : "▶"}</span>
+              </div>
+
+              {/* Expanded stats */}
+              {showDetectionStats && (
+                <div className="mt-2.5 pt-2.5 border-t border-gray-700 space-y-1">
+                  <div className="text-xs font-semibold opacity-70 mb-1.5">Pipeline</div>
+                  <div className="flex justify-between text-xs opacity-60 font-mono">
+                    <span>Preprocess</span>
+                    <span>{detection.timing.preprocess_ms} ms</span>
+                  </div>
+                  <div className="flex justify-between text-xs opacity-60 font-mono">
+                    <span>Inference</span>
+                    <span>{detection.timing.inference_ms} ms</span>
+                  </div>
+                  <div className="flex justify-between text-xs opacity-60 font-mono">
+                    <span>Postprocess</span>
+                    <span>{detection.timing.postprocess_ms} ms</span>
+                  </div>
+                  
+                  {detection.yolo_timing && (
+                    <>
+                      <div className="mt-2 pt-2 border-t border-gray-700/50"></div>
+                      <div className="text-xs font-semibold opacity-70 mb-1">YOLO Internal</div>
+                      <div className="flex justify-between text-xs opacity-60 font-mono">
+                        <span>Preprocess</span>
+                        <span>{detection.yolo_timing.preprocess_ms} ms</span>
+                      </div>
+                      <div className="flex justify-between text-xs opacity-60 font-mono">
+                        <span>Inference</span>
+                        <span>{detection.yolo_timing.inference_ms} ms</span>
+                      </div>
+                      <div className="flex justify-between text-xs opacity-60 font-mono">
+                        <span>Postprocess</span>
+                        <span>{detection.yolo_timing.postprocess_ms} ms</span>
+                      </div>
+                    </>
+                  )}
+                  
+                  {detection.thresholds && (
+                    <>
+                      <div className="mt-2 pt-2 border-t border-gray-700/50"></div>
+                      <div className="text-xs font-semibold opacity-70 mb-1">Config</div>
+                      <div className="flex justify-between text-xs opacity-60 font-mono">
+                        <span>NMS threshold</span>
+                        <span>{detection.thresholds.nms}</span>
+                      </div>
+                      <div className="flex justify-between text-xs opacity-60 font-mono">
+                        <span>Confidence threshold</span>
+                        <span>{detection.thresholds.confidence}</span>
+                      </div>
+                    </>
+                  )}
+                  
+                  {detection.avg_confidence != null && (
+                    <>
+                      <div className="mt-2 pt-2 border-t border-gray-700/50"></div>
+                      <div className="flex justify-between text-xs opacity-60 font-mono">
+                        <span>Avg confidence</span>
+                        <span>{detection.avg_confidence}%</span>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Detection summary */}
           <div

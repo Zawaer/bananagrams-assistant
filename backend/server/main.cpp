@@ -1,8 +1,4 @@
-// Bananagrams Solver - HTTP Backend Server
-// A minimal HTTP server that accepts POST /solve with JSON body {"letters": "..."}
-// and returns the solved grid as JSON.
-
-#define _SILENCE_CXX17_CODECVT_HEADER_DEPRECATION_WARNING
+//#define _SILENCE_CXX17_CODECVT_HEADER_DEPRECATION_WARNING
 
 #include <iostream>
 #include <string>

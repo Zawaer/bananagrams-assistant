@@ -1,12 +1,4 @@
-"""
-Bananagrams Tile Detection Server
-
-Receives images via POST /detect, runs YOLO ONNX segmentation model,
-returns detected letters and an annotated image with detection masks.
-"""
-
 import base64
-import io
 import os
 
 import cv2
@@ -18,6 +10,10 @@ from ultralytics import YOLO
 
 app = Flask(__name__)
 CORS(app)
+
+# Detection thresholds
+NMS_THRESHOLD = 0.8
+CONFIDENCE_THRESHOLD = 0.8
 
 # Class name mapping: model class names -> actual letters (for solver)
 CLASS_NAME_TO_LETTER = {
@@ -72,14 +68,7 @@ CLASS_NAME_TO_LABEL = {
 }
 
 # Load ONNX model at startup
-MODEL_PATH = os.path.join(
-    os.path.dirname(__file__),
-    "..",
-    "..",
-    "image-segmentation",
-    "models",
-    "yolo11x-seg-200epochs-100images.onnx",
-)
+MODEL_PATH = "../../image-segmentation/models/yolo11x-seg-200epochs-100images.onnx"
 print(f"Loading ONNX model from: {os.path.abspath(MODEL_PATH)}")
 model = YOLO(MODEL_PATH, task="segment")
 print("Model loaded successfully.")
@@ -94,34 +83,51 @@ def health():
 def detect():
     """
     Accepts a multipart image upload (field name: "image").
-    Returns JSON with:
-      - letters: string of detected letters
-      - letter_list: array of {letter, confidence} objects
-      - annotated_image: base64-encoded JPEG of the annotated image
-      - count: number of detected tiles
+    Returns JSON with timing, thresholds, and detection results.
     """
+    import time
+    
+    total_start = time.time()
+    
     if "image" not in request.files:
         return jsonify({"error": "No image file provided"}), 400
 
     file = request.files["image"]
     image_bytes = file.read()
 
-    # Decode image
+    # ──── PREPROCESS ────
+    preprocess_start = time.time()
     nparr = np.frombuffer(image_bytes, np.uint8)
     image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
     if image is None:
         return jsonify({"error": "Could not decode image"}), 400
+    
+    preprocess_time_ms = round((time.time() - preprocess_start) * 1000)
 
-    # Run inference
+    # ──── INFERENCE ────
+    inference_start = time.time()
     results = model(image)
     detections = sv.Detections.from_ultralytics(results[0])
+    inference_time_ms = round((time.time() - inference_start) * 1000)
+    
+    # Extract YOLO's internal timing from results
+    yolo_speed = results[0].speed  # dict with keys: 'preprocess', 'inference', 'postprocess' (in ms)
+    yolo_timing = {
+        "preprocess_ms": round(yolo_speed['preprocess']),
+        "inference_ms": round(yolo_speed['inference']),
+        "postprocess_ms": round(yolo_speed['postprocess']),
+    }
 
+    # ──── POSTPROCESS ────
+    postprocess_start = time.time()
+    
     # Apply Non-Maximum Suppression
-    detections = detections.with_nms(threshold=0.8)
+    detections = detections.with_nms(threshold=NMS_THRESHOLD)
 
     # Filter low-confidence detections
-    detections = detections[detections.confidence >= 0.5]
+    if CONFIDENCE_THRESHOLD > 0:
+        detections = detections[detections.confidence >= CONFIDENCE_THRESHOLD]
 
     # Extract detected letters
     letter_list = []
@@ -150,13 +156,17 @@ def detect():
 
     annotated_frame = image.copy()
     annotated_frame = mask_annotator.annotate(scene=annotated_frame, detections=detections)
-    annotated_frame = label_annotator.annotate(
-        scene=annotated_frame, detections=detections, labels=labels
-    )
+    annotated_frame = label_annotator.annotate(scene=annotated_frame, detections=detections, labels=labels)
 
     # Encode annotated image to base64 JPEG
     _, buffer = cv2.imencode(".jpg", annotated_frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
     annotated_b64 = base64.b64encode(buffer).decode("utf-8")
+    
+    postprocess_time_ms = round((time.time() - postprocess_start) * 1000)
+    total_time_ms = round((time.time() - total_start) * 1000)
+
+    # Calculate statistics
+    avg_confidence = round(sum(item["confidence"] for item in letter_list) / len(letter_list) * 100) if letter_list else 0
 
     return jsonify(
         {
@@ -164,6 +174,18 @@ def detect():
             "letter_list": letter_list,
             "annotated_image": annotated_b64,
             "count": len(letter_list),
+            "timing": {
+                "preprocess_ms": preprocess_time_ms,
+                "inference_ms": inference_time_ms,
+                "postprocess_ms": postprocess_time_ms,
+                "total_ms": total_time_ms,
+            },
+            "yolo_timing": yolo_timing,
+            "avg_confidence": avg_confidence,
+            "thresholds": {
+                "nms": NMS_THRESHOLD,
+                "confidence": CONFIDENCE_THRESHOLD,
+            },
         }
     )
 
