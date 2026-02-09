@@ -22,24 +22,24 @@ class WordUtil
 {
 public:
     WordUtil() : longest_word_length(1) {}
-    WordUtil(const std::string& word_list_filename);
+    WordUtil(const std::string& wordlist_filename);
 
     std::wstring getWordWithLength(const std::wstring& hand, int length);
 
-    std::string word_list_filename;
+    std::string wordlist_filename;
     int longest_word_length;
     std::vector<std::wstring> words;
     std::unordered_map<std::wstring, std::vector<std::wstring>> anagrams;
     std::vector<std::pair<wchar_t, int>> letter_frequencies;
 };
 
-WordUtil::WordUtil(const std::string& word_list_filename) : word_list_filename(word_list_filename), longest_word_length(1)
+WordUtil::WordUtil(const std::string& wordlist_filename) : wordlist_filename(wordlist_filename), longest_word_length(1)
 {
     // Check if file exists
-    std::wifstream stream(word_list_filename);
+    std::wifstream stream(wordlist_filename);
     if (!stream.is_open() || !stream.good()) {
-        std::cerr << "Error: Could not open wordlist file: " << word_list_filename << std::endl;
-        throw std::runtime_error("Failed to load wordlist: " + word_list_filename);
+        std::cerr << "Error: Could not open wordlist file: " << wordlist_filename << std::endl;
+        throw std::runtime_error("Failed to load wordlist: " + wordlist_filename);
     }
     
     stream.imbue(std::locale(std::locale(), new std::codecvt_utf8<wchar_t>));
@@ -74,14 +74,14 @@ WordUtil::WordUtil(const std::string& word_list_filename) : word_list_filename(w
             return a.second < b.second;
         });
 
-    std::cout << "Loaded " << words.size() << " words from " << word_list_filename << std::endl;
+    std::cout << "Loaded " << words.size() << " words from " << wordlist_filename << std::endl;
 }
 
 std::wstring WordUtil::getWordWithLength(const std::wstring& hand, int length)
 {
-    for (const auto& [sorted_word, word_list] : anagrams)
+    for (const auto& [sorted_word, wordlist] : anagrams)
     {
-        for (const auto& word : word_list)
+        for (const auto& word : wordlist)
         {
             if ((int)word.length() != length) continue;
 
