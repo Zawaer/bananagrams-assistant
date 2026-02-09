@@ -1,10 +1,3 @@
-"""
-Nykysuomen sanalista parser for Bananagrams
-Converts Kotimaisten kielten keskus word list to a filtered format for Bananagrams game.
-
-Source: https://kaino.kotus.fi/lataa/nykysuomensanalista2024.txt
-"""
-
 import time
 import csv
 from typing import List, Tuple, Optional
@@ -38,12 +31,12 @@ ALLOWED_CHARS = set(BANANAGRAMS_TILE_DISTRIBUTION.keys())
 # WORD VALIDATION
 # ============================================================================
 
-def contains_only_allowed_chars(word: str) -> bool:
+def containsOnlyAllowedChars(word: str) -> bool:
     """Check if word contains only Finnish Bananagrams characters."""
     return all(char in ALLOWED_CHARS for char in word)
 
 
-def fits_tile_distribution(word: str) -> bool:
+def fitsTileDistribution(word: str) -> bool:
     """Check if word can be made with available Bananagrams tiles."""
     for char in set(word):
         if word.count(char) > BANANAGRAMS_TILE_DISTRIBUTION[char]:
@@ -51,7 +44,7 @@ def fits_tile_distribution(word: str) -> bool:
     return True
 
 
-def is_valid_category(category: str, inflection: str) -> bool:
+def isValidCategory(category: str, inflection: str) -> bool:
     """
     Determine if word category is acceptable based on configuration.
     
@@ -107,7 +100,7 @@ def is_valid_category(category: str, inflection: str) -> bool:
     return False
 
 
-def is_word_valid(word: str, category: str, inflection: str) -> bool:
+def isWordValid(word: str, category: str, inflection: str) -> bool:
     """
     Comprehensive validation of a word for Bananagrams use.
     
@@ -125,15 +118,15 @@ def is_word_valid(word: str, category: str, inflection: str) -> bool:
         return False
     
     # Check character validity
-    if not contains_only_allowed_chars(word):
+    if not containsOnlyAllowedChars(word):
         return False
     
     # Check tile distribution
-    if not fits_tile_distribution(word):
+    if not fitsTileDistribution(word):
         return False
     
     # Check category validity
-    if not is_valid_category(category, inflection):
+    if not isValidCategory(category, inflection):
         return False
     
     return True
@@ -143,7 +136,7 @@ def is_word_valid(word: str, category: str, inflection: str) -> bool:
 # HOMONYM HANDLING
 # ============================================================================
 
-def process_homonym_group(homonym_rows: List[Tuple[str, str, str, str]]) -> Optional[str]:
+def processHomonymGroup(homonym_rows: List[Tuple[str, str, str, str]]) -> Optional[str]:
     """
     Process a group of homonymous words and return the word if any variant is valid.
     
@@ -157,7 +150,7 @@ def process_homonym_group(homonym_rows: List[Tuple[str, str, str, str]]) -> Opti
         The word in lowercase if valid, None otherwise
     """
     for word, _, category, inflection in homonym_rows:
-        if is_valid_category(category, inflection):
+        if isValidCategory(category, inflection):
             return word.lower()
     return None
 
@@ -166,7 +159,7 @@ def process_homonym_group(homonym_rows: List[Tuple[str, str, str, str]]) -> Opti
 # MAIN PARSING LOGIC
 # ============================================================================
 
-def parse_dictionary(input_file: str, output_file: str) -> None:
+def parseDictionary(input_file: str, output_file: str) -> None:
     """
     Parse the Nykysuomen sanalista and create a filtered word list for Bananagrams.
     
@@ -210,7 +203,7 @@ def parse_dictionary(input_file: str, output_file: str) -> None:
                     if homonym_num:
                         # If we're starting a new homonym group, process the previous one
                         if homonym_buffer and word != last_word:
-                            result = process_homonym_group(homonym_buffer)
+                            result = processHomonymGroup(homonym_buffer)
                             if result:
                                 wordlist.write(f'{result}\n')
                                 words_written += 1
@@ -223,14 +216,14 @@ def parse_dictionary(input_file: str, output_file: str) -> None:
                     
                     # Process any pending homonym group
                     if homonym_buffer:
-                        result = process_homonym_group(homonym_buffer)
+                        result = processHomonymGroup(homonym_buffer)
                         if result:
                             wordlist.write(f'{result}\n')
                             words_written += 1
                         homonym_buffer = []
                     
                     # Process regular word
-                    if is_word_valid(word, category, inflection):
+                    if isWordValid(word, category, inflection):
                         wordlist.write(f'{word.lower()}\n')
                         words_written += 1
                     
@@ -238,7 +231,7 @@ def parse_dictionary(input_file: str, output_file: str) -> None:
                 
                 # Process final homonym group if any
                 if homonym_buffer:
-                    result = process_homonym_group(homonym_buffer)
+                    result = processHomonymGroup(homonym_buffer)
                     if result:
                         wordlist.write(f'{result}\n')
                         words_written += 1
@@ -264,4 +257,4 @@ def parse_dictionary(input_file: str, output_file: str) -> None:
 # ============================================================================
 
 if __name__ == '__main__':
-    parse_dictionary('nykysuomensanalista2024.txt', 'wordlist.txt')
+    parseDictionary('nykysuomensanalista2024.txt', 'wordlist.txt')

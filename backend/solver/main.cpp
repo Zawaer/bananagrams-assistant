@@ -174,27 +174,27 @@ void handleClient(int client_fd)
         std::cout << "Solving for letters: " << letters << std::endl;
 
         utils::Timer timer;
-        timer.Start();
+        timer.start();
 
         Board board(*g_wordUtil);
-        board.hand = Hand(utils::string2wstring(letters));
+        board.hand = Hand(utils::stringToWString(letters));
         board.reset();
 
         bool found = board.startSolver();
-        timer.Stop();
+        timer.stop();
 
         if (!found)
         {
-            std::cout << "No solution found (" << timer.GetMS() << "ms)" << std::endl;
-            std::string resp = "{\"solved\":false,\"time_ms\":" + std::to_string(timer.GetMS()) + ",\"grid\":[]}";
+            std::cout << "No solution found (" << timer.getMs() << "ms)" << std::endl;
+            std::string resp = "{\"solved\":false,\"time_ms\":" + std::to_string(timer.getMs()) + ",\"grid\":[]}";
             sendResponse(client_fd, 200, "OK", resp);
         }
         else
         {
-            std::cout << "Solution found in " << timer.GetMS() << "ms" << std::endl;
+            std::cout << "Solution found in " << timer.getMs() << "ms" << std::endl;
             auto result_grid = board.getResultGrid();
             std::string grid_json = gridToJson(result_grid);
-            std::string resp = "{\"solved\":true,\"time_ms\":" + std::to_string(timer.GetMS()) + ",\"grid\":" + grid_json + "}";
+            std::string resp = "{\"solved\":true,\"time_ms\":" + std::to_string(timer.getMs()) + ",\"grid\":" + grid_json + "}";
             sendResponse(client_fd, 200, "OK", resp);
         }
 
@@ -220,10 +220,10 @@ int main(int argc, char* argv[])
     std::cout << "Loading word list from: " << wordlist_path << std::endl;
 
     utils::Timer timer;
-    timer.Start();
+    timer.start();
     WordUtil wordUtil(wordlist_path);
-    timer.Stop();
-    std::cout << "Word list loaded in " << timer.GetMS() << "ms" << std::endl;
+    timer.stop();
+    std::cout << "Word list loaded in " << timer.getMs() << "ms" << std::endl;
 
     g_wordUtil = &wordUtil;
 

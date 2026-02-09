@@ -112,7 +112,7 @@ class Hand
 {
 public:
     Hand() {}
-    Hand(const std::wstring& tiles) : tiles(utils::tolower(tiles)) {}
+    Hand(const std::wstring& tiles) : tiles(utils::toLower(tiles)) {}
 
     void removeWordFromTiles(const std::wstring& word)
     {
@@ -135,7 +135,7 @@ class Board
 {
 public:
     Board() {}
-    Board(WordUtil wordUtil, bool accept_duplicates = false);
+    Board(WordUtil word_util, bool accept_duplicates = false);
 
     void reset();
     std::wstring getTiles();
@@ -152,7 +152,7 @@ public:
 
     std::vector<std::vector<std::wstring>> grid;
     Hand hand;
-    WordUtil wordUtil;
+    WordUtil word_util;
 
 private:
     int max_grid_size = 0;
@@ -160,8 +160,8 @@ private:
     std::vector<std::wstring> removed_words;
 };
 
-Board::Board(WordUtil wordUtil, bool accept_duplicates)
-    : wordUtil(wordUtil), accept_duplicates(accept_duplicates)
+Board::Board(WordUtil word_util, bool accept_duplicates)
+    : word_util(word_util), accept_duplicates(accept_duplicates)
 {
     reset();
 }
@@ -181,8 +181,8 @@ void Board::reset()
     // restore removed words
     for (const auto& word : removed_words)
     {
-        wordUtil.words.emplace_back(word);
-        wordUtil.anagrams[utils::sort(word)].emplace_back(word);
+        word_util.words.emplace_back(word);
+        word_util.anagrams[utils::sort(word)].emplace_back(word);
     }
     removed_words.clear();
 }
@@ -198,7 +198,7 @@ std::wstring Board::getTiles()
 
 bool Board::placeFirstWord(int length)
 {
-    std::wstring word = wordUtil.getWordWithLength(hand.tiles, length);
+    std::wstring word = word_util.getWordWithLength(hand.tiles, length);
     if (word.empty()) return false;
 
     int x = (int)(max_grid_size / 2 - word.length() / 2);
@@ -276,10 +276,10 @@ void Board::removeWordFromWordlist(const std::wstring& word)
 {
     if (accept_duplicates) return;
 
-    wordUtil.words.erase(std::remove(wordUtil.words.begin(), wordUtil.words.end(), word), wordUtil.words.end());
+    word_util.words.erase(std::remove(word_util.words.begin(), word_util.words.end(), word), word_util.words.end());
 
     std::wstring sorted_word = utils::sort(word);
-    auto& anagram_list = wordUtil.anagrams[sorted_word];
+    auto& anagram_list = word_util.anagrams[sorted_word];
     anagram_list.erase(std::remove(anagram_list.begin(), anagram_list.end(), word), anagram_list.end());
 
     removed_words.emplace_back(word);
@@ -291,7 +291,7 @@ bool Board::findSpotForWord(const std::wstring& word, const wchar_t& seed)
 
     if (!accept_duplicates)
     {
-        if (std::find(wordUtil.words.begin(), wordUtil.words.end(), word) == wordUtil.words.end())
+        if (std::find(word_util.words.begin(), word_util.words.end(), word) == word_util.words.end())
             return false;
     }
 
@@ -334,8 +334,8 @@ bool Board::startSolver()
     std::wstring original_hand = hand.tiles;
     bool solution_found = false;
 
-    int first_word_length = (int)hand.tiles.length() > wordUtil.longest_word_length
-        ? wordUtil.longest_word_length
+    int first_word_length = (int)hand.tiles.length() > word_util.longest_word_length
+        ? word_util.longest_word_length
         : (int)hand.tiles.length();
 
     for (; first_word_length > 1; --first_word_length)
@@ -362,7 +362,7 @@ bool Board::solver()
         std::wstring board_tiles = getTiles();
         for (const wchar_t& tile : board_tiles)
         {
-            std::wstring word = wordUtil.getWordWithLength(hand.tiles + tile, word_length);
+            std::wstring word = word_util.getWordWithLength(hand.tiles + tile, word_length);
             if (word.empty()) continue;
 
             if (!findSpotForWord(word, tile)) continue;
@@ -411,7 +411,7 @@ std::vector<std::vector<std::string>> Board::getResultGrid()
             if (grid[r][c].empty())
                 row.push_back("");
             else
-                row.push_back(utils::wstring2string(utils::toupper(grid[r][c])));
+                row.push_back(utils::wstringToString(utils::toUpper(grid[r][c])));
         }
         result.push_back(row);
     }

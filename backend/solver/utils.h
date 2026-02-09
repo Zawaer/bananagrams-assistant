@@ -15,7 +15,7 @@ inline std::wstring sort(std::wstring str) {
     return str;
 }
 
-inline std::wstring tolower(std::wstring str)
+inline std::wstring toLower(std::wstring str)
 {
     for (wchar_t& c : str)
     {
@@ -24,7 +24,7 @@ inline std::wstring tolower(std::wstring str)
     return str;
 }
 
-inline std::wstring toupper(std::wstring str)
+inline std::wstring toUpper(std::wstring str)
 {
     for (wchar_t& c : str)
     {
@@ -33,13 +33,13 @@ inline std::wstring toupper(std::wstring str)
     return str;
 }
 
-inline std::wstring string2wstring(const std::string& str)
+inline std::wstring stringToWString(const std::string& str)
 {
     std::wstring_convert<std::codecvt_utf8<wchar_t>> converter;
     return converter.from_bytes(str);
 }
 
-inline std::string wstring2string(const std::wstring& wstr)
+inline std::string wstringToString(const std::wstring& wstr)
 {
     std::wstring_convert<std::codecvt_utf8<wchar_t>> converter;
     return converter.to_bytes(wstr);
@@ -47,14 +47,14 @@ inline std::string wstring2string(const std::wstring& wstr)
 
 struct Timer
 {
-    std::chrono::time_point<std::chrono::steady_clock> startTime, endTime;
+    std::chrono::time_point<std::chrono::steady_clock> start_time, end_time;
 
-    void Start() { startTime = std::chrono::high_resolution_clock::now(); }
-    void Stop()  { endTime = std::chrono::high_resolution_clock::now(); }
+    void start() { start_time = std::chrono::high_resolution_clock::now(); }
+    void stop()  { end_time = std::chrono::high_resolution_clock::now(); }
 
-    int GetMS()
+    int getMs()
     {
-        auto time = endTime - startTime;
+        auto time = end_time - start_time;
         return (int)std::chrono::duration<double, std::milli>(time).count();
     }
 };
