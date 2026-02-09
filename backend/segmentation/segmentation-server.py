@@ -191,5 +191,5 @@ def detect():
 
 
 if __name__ == "__main__":
-    print("Starting detection server on http://localhost:8081")
+    print("Starting segmentation server on http://localhost:8081")
     app.run(host="0.0.0.0", port=8081, debug=False)

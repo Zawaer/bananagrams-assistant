@@ -35,7 +35,13 @@ public:
 
 WordUtil::WordUtil(const std::string& wordListFilename) : wordListFilename(wordListFilename), longestWordLength(1)
 {
+    // Check if file exists
     std::wifstream stream(wordListFilename);
+    if (!stream.is_open() || !stream.good()) {
+        std::cerr << "Error: Could not open wordlist file: " << wordListFilename << std::endl;
+        throw std::runtime_error("Failed to load wordlist: " + wordListFilename);
+    }
+    
     stream.imbue(std::locale(std::locale(), new std::codecvt_utf8<wchar_t>));
     std::wstring line;
 
