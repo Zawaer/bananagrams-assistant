@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Bananagrams Solver",
-  description: "Finnish Bananagrams puzzle solver",
+  title: "Bananagrams Assistant",
+  description: "Finnish Bananagrams game assistant with tile detection",
 };
 
 export default function RootLayout({
