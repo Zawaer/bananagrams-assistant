@@ -66,7 +66,7 @@ std::string gridToJson(const std::vector<std::vector<std::string>>& grid)
 // HTTP handling
 // ============================================================================
 
-std::string readFullRequest(int clientFd)
+std::string readFullRequest(int client_fd)
 {
     std::string data;
     char buf[4096];
@@ -74,33 +74,33 @@ std::string readFullRequest(int clientFd)
     // Read headers first
     while (true)
     {
-        ssize_t n = recv(clientFd, buf, sizeof(buf) - 1, 0);
+        ssize_t n = recv(client_fd, buf, sizeof(buf) - 1, 0);
         if (n <= 0) break;
         buf[n] = 0;
         data += buf;
 
         // Check if we have the full headers
-        size_t headerEnd = data.find("\r\n\r\n");
-        if (headerEnd != std::string::npos)
+        size_t header_end = data.find("\r\n\r\n");
+        if (header_end != std::string::npos)
         {
             // Check Content-Length
-            size_t clPos = data.find("Content-Length:");
-            if (clPos == std::string::npos)
-                clPos = data.find("content-length:");
+            size_t cl_pos = data.find("Content-Length:");
+            if (cl_pos == std::string::npos)
+                cl_pos = data.find("content-length:");
 
-            if (clPos != std::string::npos)
+            if (cl_pos != std::string::npos)
             {
-                int contentLength = std::stoi(data.substr(clPos + 15));
-                size_t bodyStart = headerEnd + 4;
-                size_t bodyReceived = data.size() - bodyStart;
+                int content_length = std::stoi(data.substr(cl_pos + 15));
+                size_t body_start = header_end + 4;
+                size_t body_received = data.size() - body_start;
 
-                while ((int)bodyReceived < contentLength)
+                while ((int)body_received < content_length)
                 {
-                    n = recv(clientFd, buf, sizeof(buf) - 1, 0);
+                    n = recv(client_fd, buf, sizeof(buf) - 1, 0);
                     if (n <= 0) break;
                     buf[n] = 0;
                     data += buf;
-                    bodyReceived += n;
+                    body_received += n;
                 }
             }
             break;
@@ -110,12 +110,12 @@ std::string readFullRequest(int clientFd)
     return data;
 }
 
-void sendResponse(int clientFd, int statusCode, const std::string& statusText,
-                   const std::string& body, const std::string& contentType = "application/json")
+void sendResponse(int client_fd, int status_code, const std::string& status_text,
+                   const std::string& body, const std::string& content_type = "application/json")
 {
     std::ostringstream resp;
-    resp << "HTTP/1.1 " << statusCode << " " << statusText << "\r\n";
-    resp << "Content-Type: " << contentType << "\r\n";
+    resp << "HTTP/1.1 " << status_code << " " << status_text << "\r\n";
+    resp << "Content-Type: " << content_type << "\r\n";
     resp << "Content-Length: " << body.size() << "\r\n";
     resp << "Access-Control-Allow-Origin: *\r\n";
     resp << "Access-Control-Allow-Methods: POST, GET, OPTIONS\r\n";
@@ -125,12 +125,12 @@ void sendResponse(int clientFd, int statusCode, const std::string& statusText,
     resp << body;
 
     std::string full = resp.str();
-    send(clientFd, full.c_str(), full.size(), 0);
+    send(client_fd, full.c_str(), full.size(), 0);
 }
 
-void handleClient(int clientFd)
+void handleClient(int client_fd)
 {
-    std::string request = readFullRequest(clientFd);
+    std::string request = readFullRequest(client_fd);
 
     // Parse method and path
     std::string method, path;
@@ -142,16 +142,16 @@ void handleClient(int clientFd)
     // CORS preflight
     if (method == "OPTIONS")
     {
-        sendResponse(clientFd, 204, "No Content", "");
-        close(clientFd);
+        sendResponse(client_fd, 204, "No Content", "");
+        close(client_fd);
         return;
     }
 
     // Health check
     if (method == "GET" && path == "/health")
     {
-        sendResponse(clientFd, 200, "OK", "{\"status\":\"ok\"}");
-        close(clientFd);
+        sendResponse(client_fd, 200, "OK", "{\"status\":\"ok\"}");
+        close(client_fd);
         return;
     }
 
@@ -159,15 +159,15 @@ void handleClient(int clientFd)
     if (method == "POST" && path == "/solve")
     {
         // Extract body
-        size_t bodyStart = request.find("\r\n\r\n");
-        std::string body = (bodyStart != std::string::npos) ? request.substr(bodyStart + 4) : "";
+        size_t body_start = request.find("\r\n\r\n");
+        std::string body = (body_start != std::string::npos) ? request.substr(body_start + 4) : "";
 
         std::string letters = jsonGetString(body, "letters");
 
         if (letters.empty())
         {
-            sendResponse(clientFd, 400, "Bad Request", "{\"error\":\"Missing 'letters' field\"}");
-            close(clientFd);
+            sendResponse(client_fd, 400, "Bad Request", "{\"error\":\"Missing 'letters' field\"}");
+            close(client_fd);
             return;
         }
 
@@ -187,23 +187,23 @@ void handleClient(int clientFd)
         {
             std::cout << "No solution found (" << timer.GetMS() << "ms)" << std::endl;
             std::string resp = "{\"solved\":false,\"time_ms\":" + std::to_string(timer.GetMS()) + ",\"grid\":[]}";
-            sendResponse(clientFd, 200, "OK", resp);
+            sendResponse(client_fd, 200, "OK", resp);
         }
         else
         {
             std::cout << "Solution found in " << timer.GetMS() << "ms" << std::endl;
-            auto resultGrid = board.getResultGrid();
-            std::string gridJson = gridToJson(resultGrid);
-            std::string resp = "{\"solved\":true,\"time_ms\":" + std::to_string(timer.GetMS()) + ",\"grid\":" + gridJson + "}";
-            sendResponse(clientFd, 200, "OK", resp);
+            auto result_grid = board.getResultGrid();
+            std::string grid_json = gridToJson(result_grid);
+            std::string resp = "{\"solved\":true,\"time_ms\":" + std::to_string(timer.GetMS()) + ",\"grid\":" + grid_json + "}";
+            sendResponse(client_fd, 200, "OK", resp);
         }
 
-        close(clientFd);
+        close(client_fd);
         return;
     }
 
-    sendResponse(clientFd, 404, "Not Found", "{\"error\":\"Not found\"}");
-    close(clientFd);
+    sendResponse(client_fd, 404, "Not Found", "{\"error\":\"Not found\"}");
+    close(client_fd);
 }
 
 // ============================================================================
@@ -214,33 +214,33 @@ int main(int argc, char* argv[])
 {
     std::locale::global(std::locale(""));
 
-    std::string wordlistPath = "../wordlist-parser/wordlist.txt";
-    if (argc > 1) wordlistPath = argv[1];
+    std::string wordlist_path = "../wordlist-parser/wordlist.txt";
+    if (argc > 1) wordlist_path = argv[1];
 
-    std::cout << "Loading word list from: " << wordlistPath << std::endl;
+    std::cout << "Loading word list from: " << wordlist_path << std::endl;
 
     utils::Timer timer;
     timer.Start();
-    WordUtil wordUtil(wordlistPath);
+    WordUtil wordUtil(wordlist_path);
     timer.Stop();
     std::cout << "Word list loaded in " << timer.GetMS() << "ms" << std::endl;
 
     g_wordUtil = &wordUtil;
 
     // Create socket
-    int serverFd = socket(AF_INET, SOCK_STREAM, 0);
-    if (serverFd < 0) { perror("socket"); return 1; }
+    int server_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (server_fd < 0) { perror("socket"); return 1; }
 
     int opt = 1;
-    setsockopt(serverFd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+    setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
 
     sockaddr_in addr{};
     addr.sin_family = AF_INET;
     addr.sin_addr.s_addr = INADDR_ANY;
     addr.sin_port = htons(PORT);
 
-    if (bind(serverFd, (sockaddr*)&addr, sizeof(addr)) < 0) { perror("bind"); return 1; }
-    if (listen(serverFd, 10) < 0) { perror("listen"); return 1; }
+    if (bind(server_fd, (sockaddr*)&addr, sizeof(addr)) < 0) { perror("bind"); return 1; }
+    if (listen(server_fd, 10) < 0) { perror("listen"); return 1; }
 
     std::cout << "\nBananagrams solver server listening on http://localhost:" << PORT << std::endl;
     std::cout << "Endpoints:" << std::endl;
@@ -249,15 +249,15 @@ int main(int argc, char* argv[])
 
     while (true)
     {
-        sockaddr_in clientAddr{};
-        socklen_t clientLen = sizeof(clientAddr);
-        int clientFd = accept(serverFd, (sockaddr*)&clientAddr, &clientLen);
-        if (clientFd < 0) { perror("accept"); continue; }
+        sockaddr_in client_addr{};
+        socklen_t client_len = sizeof(client_addr);
+        int client_fd = accept(server_fd, (sockaddr*)&client_addr, &client_len);
+        if (client_fd < 0) { perror("accept"); continue; }
 
         // Handle each request in a new thread
-        std::thread(handleClient, clientFd).detach();
+        std::thread(handleClient, client_fd).detach();
     }
 
-    close(serverFd);
+    close(server_fd);
     return 0;
 }
