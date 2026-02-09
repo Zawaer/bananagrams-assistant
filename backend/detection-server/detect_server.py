@@ -19,8 +19,34 @@ from ultralytics import YOLO
 app = Flask(__name__)
 CORS(app)
 
-# Class name mapping: model class names -> actual letters
+# Class name mapping: model class names -> actual letters (for solver)
 CLASS_NAME_TO_LETTER = {
+    "a": "a",
+    "a_dot": "ä",
+    "b": "b",
+    "d": "d",
+    "e": "e",
+    "g": "g",
+    "h": "h",
+    "i": "i",
+    "j": "j",
+    "k": "k",
+    "l": "l",
+    "m": "m",
+    "n": "n",
+    "o": "o",
+    "o_dot": "ö",
+    "p": "p",
+    "r": "r",
+    "s": "s",
+    "t": "t",
+    "u": "u",
+    "v": "v",
+    "y": "y",
+}
+
+# Class name mapping for display labels (OpenCV can't render ä/ö)
+CLASS_NAME_TO_LABEL = {
     "a": "A",
     "a_dot": "A!",
     "b": "B",
@@ -118,7 +144,7 @@ def detect():
     )
 
     labels = [
-        f"{CLASS_NAME_TO_LETTER.get(model.names[class_id], model.names[class_id])} {confidence:.2f}"
+        f"{CLASS_NAME_TO_LABEL.get(model.names[class_id], model.names[class_id])} {confidence:.2f}"
         for class_id, confidence in zip(detections.class_id, detections.confidence)
     ]
 

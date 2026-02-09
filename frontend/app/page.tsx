@@ -51,6 +51,9 @@ export default function Home() {
   // Correction
   const [correctedLetters, setCorrectedLetters] = useState("");
 
+  // Manual input
+  const [manualInput, setManualInput] = useState("");
+
   // Solving
   const [solving, setSolving] = useState(false);
   const [solution, setSolution] = useState<SolveResult | null>(null);
@@ -71,7 +74,7 @@ export default function Home() {
       }
       setCameraActive(true);
     } catch {
-      setDetectionError("Kameran käyttö ei onnistunut. Kokeile ladata kuva tiedostosta.");
+      setDetectionError("Camera access failed. Try uploading a photo instead.");
     }
   }, []);
 
@@ -150,7 +153,7 @@ export default function Home() {
       // If count matches, go to detection view (auto-solve triggered there)
       setStep("detection");
     } catch (e) {
-      setDetectionError(e instanceof Error ? e.message : "Tunnistusvirhe");
+      setDetectionError(e instanceof Error ? e.message : "Detection error");
     } finally {
       setDetecting(false);
     }
@@ -178,7 +181,7 @@ export default function Home() {
       setSolution(data);
       setStep("solved");
     } catch (e) {
-      setSolveError(e instanceof Error ? e.message : "Ratkaisuvirhe");
+      setSolveError(e instanceof Error ? e.message : "Solve error");
     } finally {
       setSolving(false);
     }
@@ -199,6 +202,7 @@ export default function Home() {
     setSolution(null);
     setSolveError(null);
     setCorrectedLetters("");
+    setManualInput("");
     setStep("capture");
   };
 
@@ -211,6 +215,7 @@ export default function Home() {
     setSolution(null);
     setSolveError(null);
     setCorrectedLetters("");
+    setManualInput("");
     setStep("setup");
   };
 
@@ -222,6 +227,17 @@ export default function Home() {
       .join("");
     if (filtered.length < 2) return;
     setCorrectedLetters(filtered);
+    solvePuzzle(filtered);
+  };
+
+  const handleManualSolve = () => {
+    const filtered = manualInput
+      .toLowerCase()
+      .split("")
+      .filter((c) => VALID_CHARS.has(c))
+      .join("");
+    if (filtered.length < 2) return;
+    setManualInput(filtered);
     solvePuzzle(filtered);
   };
 
@@ -241,7 +257,7 @@ export default function Home() {
       <h1 className="mb-1 text-3xl font-bold tracking-tight" style={{ color: "var(--accent)" }}>
         Bananagrams Assistant
       </h1>
-      <p className="mb-6 text-sm opacity-60">Suomenkielinen Bananagrams-avustaja</p>
+      <p className="mb-6 text-sm opacity-60">English Bananagrams assistant</p>
 
       {/* ── Step indicator ── */}
       <StepIndicator current={step} />
@@ -249,9 +265,9 @@ export default function Home() {
       {/* ── SETUP ── */}
       {step === "setup" && (
         <div className="w-full max-w-md flex flex-col items-center gap-6 mt-6">
-          <h2 className="text-xl font-semibold">Aloita uusi peli</h2>
+          <h2 className="text-xl font-semibold">Start a new game</h2>
           <p className="text-sm opacity-60 text-center">
-            Valitse montako kirjainlaattaa jaat tällä kierroksella
+            Choose how many tiles each player gets this round
           </p>
 
           <div className="flex gap-3 flex-wrap justify-center">
@@ -282,7 +298,7 @@ export default function Home() {
                 setCustomCount(e.target.value);
                 if (e.target.value) setTileCount(parseInt(e.target.value, 10));
               }}
-              placeholder="Muu"
+              placeholder="Custom"
               className="w-20 rounded-lg px-3 py-3 text-lg text-center font-bold outline-none focus:ring-2"
               style={{
                 background: "var(--input-bg)",
@@ -297,7 +313,7 @@ export default function Home() {
             className="rounded-lg px-8 py-3 text-lg font-bold text-black transition-all cursor-pointer hover:opacity-90"
             style={{ background: "var(--accent)" }}
           >
-            Aloita peli – {customCount || tileCount} laattaa
+            Start game – {customCount || tileCount} tiles
           </button>
         </div>
       )}
@@ -305,9 +321,9 @@ export default function Home() {
       {/* ── CAPTURE ── */}
       {step === "capture" && (
         <div className="w-full max-w-lg flex flex-col items-center gap-4 mt-6">
-          <h2 className="text-xl font-semibold">Kuvaa kirjainlaatat</h2>
+          <h2 className="text-xl font-semibold">Capture the tiles</h2>
           <p className="text-sm opacity-60 text-center">
-            Ota kuva kameralla tai lataa kuva tiedostosta ({tileCount} laattaa)
+            Take a photo or upload one ({tileCount} tiles)
           </p>
 
           {/* Camera view */}
@@ -331,7 +347,7 @@ export default function Home() {
             <div className="w-full">
               <img
                 src={capturedPreview}
-                alt="Kuvattu kuva"
+                alt="Captured photo"
                 className="w-full rounded-lg"
               />
             </div>
@@ -345,7 +361,7 @@ export default function Home() {
                 className="w-full rounded-lg px-6 py-4 text-lg font-bold text-black transition-all cursor-pointer hover:opacity-90"
                 style={{ background: "var(--accent)" }}
               >
-                📷 Avaa kamera
+                📷 Open camera
               </button>
 
               <label
@@ -357,7 +373,7 @@ export default function Home() {
                   display: "block",
                 }}
               >
-                📁 Lataa kuva
+                📁 Upload photo
                 <input
                   type="file"
                   accept="image/*"
@@ -365,6 +381,59 @@ export default function Home() {
                   className="hidden"
                 />
               </label>
+
+              {/* Divider */}
+              <div className="flex items-center gap-3 my-2">
+                <div className="flex-1 h-px" style={{ background: "var(--input-border)" }} />
+                <span className="text-sm opacity-40">or</span>
+                <div className="flex-1 h-px" style={{ background: "var(--input-border)" }} />
+              </div>
+
+              {/* Manual input */}
+              <div className="flex flex-col gap-2">
+                <label className="text-sm opacity-60">Manual input</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={manualInput}
+                    onChange={(e) => {
+                      const filtered = e.target.value
+                        .toLowerCase()
+                        .split("")
+                        .filter((c) => VALID_CHARS.has(c))
+                        .join("");
+                      setManualInput(filtered);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && manualInput.length >= 2) {
+                        handleManualSolve();
+                      }
+                    }}
+                    placeholder="Type letters..."
+                    className="flex-1 rounded-lg px-4 py-3 text-lg font-mono tracking-widest uppercase outline-none focus:ring-2"
+                    style={{
+                      background: "var(--input-bg)",
+                      border: "2px solid var(--input-border)",
+                      color: "var(--foreground)",
+                    }}
+                  />
+                  <button
+                    onClick={handleManualSolve}
+                    disabled={manualInput.length < 2}
+                    className="rounded-lg px-6 py-3 font-bold text-black transition-all cursor-pointer hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
+                    style={{
+                      background: manualInput.length >= 2 ? "var(--accent)" : "var(--input-border)",
+                    }}
+                  >
+                    Solve
+                  </button>
+                </div>
+                {manualInput.length > 0 && (
+                  <p className="text-xs opacity-50">
+                    {manualInput.length} letters
+                  </p>
+                )}
+              </div>
             </div>
           )}
 
@@ -380,14 +449,14 @@ export default function Home() {
                   color: "var(--foreground)",
                 }}
               >
-                Ota uudelleen
+                Retake
               </button>
               <button
                 onClick={runDetection}
                 className="flex-1 rounded-lg px-4 py-3 font-bold text-black cursor-pointer transition-all hover:opacity-90"
                 style={{ background: "var(--accent)" }}
               >
-                Tunnista laatat
+                Detect tiles
               </button>
             </div>
           )}
@@ -396,7 +465,7 @@ export default function Home() {
           {detecting && (
             <div className="flex flex-col items-center gap-3 mt-4">
               <div className="h-10 w-10 animate-spin rounded-full border-4 border-gray-600 border-t-amber-400" />
-              <p className="text-sm opacity-60">Tunnistetaan kirjaimia...</p>
+              <p className="text-sm opacity-60">Detecting letters...</p>
             </div>
           )}
 
@@ -412,7 +481,7 @@ export default function Home() {
             onClick={resetGame}
             className="text-sm opacity-50 hover:opacity-80 cursor-pointer mt-2"
           >
-            ← Takaisin alkuun
+            ← Back to start
           </button>
         </div>
       )}
@@ -420,12 +489,12 @@ export default function Home() {
       {/* ── DETECTION RESULT ── */}
       {step === "detection" && detection && (
         <div className="w-full max-w-lg flex flex-col items-center gap-4 mt-6">
-          <h2 className="text-xl font-semibold">Tunnistustulos</h2>
+          <h2 className="text-xl font-semibold">Detection result</h2>
 
           {/* Annotated image */}
           <img
             src={`data:image/jpeg;base64,${detection.annotated_image}`}
-            alt="Tunnistetut laatat"
+            alt="Detected tiles"
             className="w-full rounded-lg"
           />
 
@@ -435,7 +504,7 @@ export default function Home() {
             style={{ background: "var(--input-bg)", border: "2px solid var(--input-border)" }}
           >
             <div className="flex justify-between items-center mb-2">
-              <span className="text-sm opacity-60">Tunnistettu</span>
+              <span className="text-sm opacity-60">Detected</span>
               <span
                 className="font-bold text-lg"
                 style={{
@@ -460,11 +529,11 @@ export default function Home() {
           {detection.count !== tileCount && (
             <div className="w-full rounded-lg bg-amber-900/40 border border-amber-600 px-4 py-3 text-amber-300">
               <p className="font-medium mb-2">
-                ⚠️ Tunnistettiin {detection.count} laattaa, mutta odotettiin {tileCount}.
+                ⚠️ Detected {detection.count} tiles, but expected {tileCount}.
               </p>
               <p className="text-sm opacity-80 mb-3">
-                Tarkista kuva yläpuolella ja korjaa kirjaimet alla.
-                Puuttuvat tai virheelliset laatat voi lisätä/poistaa manuaalisesti.
+                Review the image above and fix the letters below.
+                You can add or remove missing/incorrect tiles manually.
               </p>
 
               <div className="flex gap-2">
@@ -492,12 +561,12 @@ export default function Home() {
                   className="rounded-lg px-5 py-2 font-bold text-black cursor-pointer transition-all hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
                   style={{ background: "var(--accent)" }}
                 >
-                  Ratkaise
+                  Solve
                 </button>
               </div>
 
               <p className="text-xs opacity-50 mt-1">
-                {correctedLetters.length} kirjainta
+                {correctedLetters.length} letters
               </p>
             </div>
           )}
@@ -506,7 +575,7 @@ export default function Home() {
           {detection.count === tileCount && solving && (
             <div className="flex flex-col items-center gap-3 mt-2">
               <div className="h-10 w-10 animate-spin rounded-full border-4 border-gray-600 border-t-amber-400" />
-              <p className="text-sm opacity-60">Ratkaistaan...</p>
+              <p className="text-sm opacity-60">Solving...</p>
             </div>
           )}
 
@@ -531,7 +600,7 @@ export default function Home() {
                 color: "var(--foreground)",
               }}
             >
-              Ota uusi kuva
+              Take a new photo
             </button>
             {detection.count === tileCount && !solving && (
               <button
@@ -539,7 +608,7 @@ export default function Home() {
                 className="flex-1 rounded-lg px-4 py-3 font-bold text-black cursor-pointer transition-all hover:opacity-90"
                 style={{ background: "var(--accent)" }}
               >
-                Ratkaise
+                Solve
               </button>
             )}
           </div>
@@ -548,7 +617,7 @@ export default function Home() {
             onClick={resetGame}
             className="text-sm opacity-50 hover:opacity-80 cursor-pointer"
           >
-            ← Takaisin alkuun
+            ← Back to start
           </button>
         </div>
       )}
@@ -559,10 +628,10 @@ export default function Home() {
           {solution.solved ? (
             <>
               <h2 className="text-xl font-semibold" style={{ color: "#4ade80" }}>
-                Ratkaisu löytyi!
+                Solution found!
               </h2>
               <p className="text-sm opacity-60">
-                Ratkaistu {solution.time_ms} ms:ssa
+                Solved in {solution.time_ms} ms
               </p>
 
               {/* Solution grid */}
@@ -585,10 +654,10 @@ export default function Home() {
           ) : (
             <>
               <h2 className="text-xl font-semibold" style={{ color: "#f87171" }}>
-                Ratkaisua ei löytynyt
+                No solution found
               </h2>
               <p className="text-sm opacity-60">
-                Kokeile tarkistaa kirjaimet ja yrittää uudelleen
+                Double-check the letters and try again
               </p>
             </>
           )}
@@ -610,14 +679,14 @@ export default function Home() {
                 color: "var(--foreground)",
               }}
             >
-              Uusi kuva (sama peli)
+              New photo (same game)
             </button>
             <button
               onClick={resetGame}
               className="flex-1 rounded-lg px-4 py-3 font-bold text-black cursor-pointer transition-all hover:opacity-90"
               style={{ background: "var(--accent)" }}
             >
-              Uusi peli
+              New game
             </button>
           </div>
         </div>
@@ -627,7 +696,7 @@ export default function Home() {
       {solving && step !== "detection" && (
         <div className="mt-8 flex flex-col items-center gap-3">
           <div className="h-10 w-10 animate-spin rounded-full border-4 border-gray-600 border-t-amber-400" />
-          <p className="text-sm opacity-60">Ratkaistaan...</p>
+          <p className="text-sm opacity-60">Solving...</p>
         </div>
       )}
     </div>
@@ -640,10 +709,10 @@ export default function Home() {
 
 function StepIndicator({ current }: { current: GameStep }) {
   const steps: { key: GameStep; label: string }[] = [
-    { key: "setup", label: "Asetukset" },
-    { key: "capture", label: "Kuvaus" },
-    { key: "detection", label: "Tunnistus" },
-    { key: "solved", label: "Ratkaisu" },
+    { key: "setup", label: "Setup" },
+    { key: "capture", label: "Capture" },
+    { key: "detection", label: "Detection" },
+    { key: "solved", label: "Solution" },
   ];
 
   const currentIndex = steps.findIndex((s) => s.key === current);
