@@ -68,7 +68,12 @@ CLASS_NAME_TO_LABEL = {
 }
 
 # Load ONNX model at startup
-MODEL_PATH = "../../image-segmentation/models/yolo11x-seg-200epochs-100images.onnx"
+# Check for production path first (Docker), then fall back to local development path
+if os.path.exists("./model.onnx"):
+    MODEL_PATH = "./model.onnx"
+else:
+    MODEL_PATH = "../../image-segmentation/models/yolo11x-seg-200epochs-100images.onnx"
+
 print(f"Loading ONNX model from: {os.path.abspath(MODEL_PATH)}")
 model = YOLO(MODEL_PATH, task="segment")
 print("Model loaded successfully.")

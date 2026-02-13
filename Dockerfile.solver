@@ -1,0 +1,26 @@
+# Dockerfile for Solver Service
+# Place this at repository root or use with proper build context
+
+FROM ubuntu:22.04
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y \
+    g++ \
+    cmake \
+    make \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy solver source files
+COPY backend/solver/solver.h backend/solver/utils.h backend/solver/main.cpp backend/solver/CMakeLists.txt ./
+
+# Copy wordlist
+COPY backend/wordlist-parser/wordlist.txt ./wordlist.txt
+
+# Build
+RUN mkdir -p build && cd build && cmake .. && make
+
+EXPOSE 8080
+
+CMD ["./build/solver-server", "./wordlist.txt"]

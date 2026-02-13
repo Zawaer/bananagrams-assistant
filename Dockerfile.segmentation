@@ -1,0 +1,29 @@
+# Dockerfile for Segmentation Service
+# Place this at repository root or use with proper build context
+
+FROM python:3.11-slim
+
+# Install system dependencies for OpenCV
+RUN apt-get update && apt-get install -y \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+    libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy and install Python dependencies
+COPY backend/segmentation/requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application code
+COPY backend/segmentation/segmentation-server.py ./
+
+# Copy ONNX model
+COPY image-segmentation/models/yolo11x-seg-200epochs-100images.onnx ./model.onnx
+
+EXPOSE 8081
+
+CMD ["python", "segmentation-server.py"]

@@ -39,16 +39,21 @@ type SolveResult = {
 
 const TILE_PRESETS = [10, 15, 21];
 
-// Use current hostname so it works on local network
-const getServerUrl = (port: number) => {
+// Get server URLs from environment variables or fall back to local development
+const getServerUrl = (port: number, envVarName: string) => {
+  // In production, use environment variables
+  const envUrl = process.env[envVarName];
+  if (envUrl) return envUrl;
+  
+  // In development, use current hostname (works on local network)
   if (typeof window !== "undefined") {
     return `http://${window.location.hostname}:${port}`;
   }
   return `http://localhost:${port}`;
 };
 
-const DETECTION_SERVER = getServerUrl(8081);
-const SOLVER_SERVER = getServerUrl(8080);
+const DETECTION_SERVER = getServerUrl(8081, "NEXT_PUBLIC_DETECTION_SERVER_URL");
+const SOLVER_SERVER = getServerUrl(8080, "NEXT_PUBLIC_SOLVER_SERVER_URL");
 
 const VALID_CHARS = new Set("abdeghijklmnoprstuvyäö".split(""));
 
@@ -92,17 +97,36 @@ export default function Home() {
   // ============================================================================
 
   const startCamera = useCallback(async () => {
+    // Check if camera API is available (requires HTTPS or localhost)
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setDetectionError(
+        "Camera requires HTTPS. Please access this site via https:// or use 'Upload photo' instead."
+      );
+      return;
+    }
+
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } },
-      });
+      // Try rear camera first
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } },
+        });
+      } catch {
+        // Fallback to any camera
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { width: { ideal: 1920 }, height: { ideal: 1080 } },
+        });
+      }
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
       }
       setCameraActive(true);
-    } catch {
-      setDetectionError("Unable to access camera.");
+    } catch (error) {
+      console.error("Camera error:", error);
+      const message = error instanceof Error ? error.message : "Unable to access camera. Please allow camera permissions.";
+      setDetectionError(message);
     }
   }, []);
 
@@ -515,9 +539,7 @@ export default function Home() {
 
       {/* ── DETECTION RESULT ── */}
       {step === "detection" && detection && (
-        <div className="w-full max-w-lg flex flex-col items-center gap-4 mt-6">
-          <h2 className="text-xl font-semibold">Detection result</h2>
-
+        <div className="w-full max-w-lg flex flex-col items-center gap-4">
           {/* Annotated image */}
           <img
             src={`data:image/jpeg;base64,${detection.annotated_image}`}
@@ -730,7 +752,7 @@ export default function Home() {
 
       {/* ── SOLVED ── */}
       {step === "solved" && solution && (
-        <div className="w-full max-w-lg flex flex-col items-center gap-4 mt-6">
+        <div className="w-full max-w-lg md:max-w-4xl flex flex-col items-center gap-4 mt-6">
           {solution.solved ? (
             <>
               <h2 className="text-xl font-semibold" style={{ color: "#4ade80" }}>
@@ -769,27 +791,10 @@ export default function Home() {
           )}
 
           {/* Actions */}
-          <div className="flex gap-3 w-full mt-4">
-            <button
-              onClick={() => {
-                setStep("capture");
-                setCapturedImage(null);
-                setCapturedPreview(null);
-                setDetection(null);
-                setSolution(null);
-              }}
-              className="flex-1 rounded-lg px-4 py-3 font-bold cursor-pointer transition-all"
-              style={{
-                background: "var(--input-bg)",
-                border: "2px solid var(--input-border)",
-                color: "var(--foreground)",
-              }}
-            >
-              New photo (same game)
-            </button>
+          <div className="flex justify-center w-full mt-4">
             <button
               onClick={resetGame}
-              className="flex-1 rounded-lg px-4 py-3 font-bold text-black cursor-pointer transition-all hover:opacity-90"
+              className="rounded-lg px-8 py-3 font-bold text-black cursor-pointer transition-all hover:opacity-90"
               style={{ background: "var(--accent)" }}
             >
               New game
