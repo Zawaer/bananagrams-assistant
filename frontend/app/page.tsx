@@ -38,8 +38,17 @@ type SolveResult = {
 };
 
 const TILE_PRESETS = [10, 15, 21];
-const DETECTION_SERVER = "http://localhost:8081";
-const SOLVER_SERVER = "http://localhost:8080";
+
+// Use current hostname so it works on local network
+const getServerUrl = (port: number) => {
+  if (typeof window !== "undefined") {
+    return `http://${window.location.hostname}:${port}`;
+  }
+  return `http://localhost:${port}`;
+};
+
+const DETECTION_SERVER = getServerUrl(8081);
+const SOLVER_SERVER = getServerUrl(8080);
 
 const VALID_CHARS = new Set("abdeghijklmnoprstuvyäö".split(""));
 
@@ -93,7 +102,7 @@ export default function Home() {
       }
       setCameraActive(true);
     } catch {
-      setDetectionError("Camera access failed. Try uploading a photo instead.");
+      setDetectionError("Unable to access camera.");
     }
   }, []);
 
@@ -273,13 +282,6 @@ export default function Home() {
 
   return (
     <div className="flex min-h-screen flex-col items-center px-4 py-8">
-      <h1 className="mb-10 text-3xl font-bold tracking-tight" style={{ color: "var(--accent)" }}>
-        Bananagrams Assistant
-      </h1>
-      
-      {/* ── Step indicator ── */}
-      <StepIndicator current={step} />
-
       {/* ── SETUP ── */}
       {step === "setup" && (
         <div className="w-full max-w-md flex flex-col items-center gap-6 mt-6">
@@ -313,10 +315,17 @@ export default function Home() {
               max="144"
               value={customCount}
               onChange={(e) => {
-                setCustomCount(e.target.value);
-                if (e.target.value) setTileCount(parseInt(e.target.value, 10));
+                const value = e.target.value.replace(/[^0-9]/g, '');
+                setCustomCount(value);
+                if (value) setTileCount(parseInt(value, 10));
               }}
-              placeholder="Custom"
+              onKeyDown={(e) => {
+                // Prevent typing non-numeric characters
+                if (!/[0-9]/.test(e.key) && !['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Tab'].includes(e.key)) {
+                  e.preventDefault();
+                }
+              }}
+              placeholder="..."
               className="w-20 rounded-lg px-3 py-3 text-lg text-center font-bold outline-none focus:ring-2"
               style={{
                 background: "var(--input-bg)",
@@ -734,7 +743,7 @@ export default function Home() {
               {/* Solution grid */}
               <div className="flex flex-col gap-0.5 overflow-x-auto max-w-full p-2">
                 {solution.grid.map((row, y) => (
-                  <div key={y} className="flex gap-0.5">
+                  <div key={y} className="flex gap-0.5 shrink-0">
                     {row.map((cell, x) =>
                       cell ? (
                         <div key={x} className="tile">
@@ -796,53 +805,6 @@ export default function Home() {
           <p className="text-sm opacity-60">Solving...</p>
         </div>
       )}
-    </div>
-  );
-}
-
-// ============================================================================
-// Step indicator component
-// ============================================================================
-
-function StepIndicator({ current }: { current: GameStep }) {
-  const steps: { key: GameStep; label: string }[] = [
-    { key: "setup", label: "Setup" },
-    { key: "capture", label: "Capture" },
-    { key: "detection", label: "Detection" },
-    { key: "solved", label: "Solution" },
-  ];
-
-  const currentIndex = steps.findIndex((s) => s.key === current);
-
-  return (
-    <div className="flex items-center gap-2 mb-2">
-      {steps.map((s, i) => (
-        <div key={s.key} className="flex items-center gap-2">
-          <div
-            className="flex items-center gap-1.5"
-            style={{ opacity: i <= currentIndex ? 1 : 0.3 }}
-          >
-            <div
-              className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold"
-              style={{
-                background: i <= currentIndex ? "var(--accent)" : "var(--input-border)",
-                color: i <= currentIndex ? "#000" : "var(--foreground)",
-              }}
-            >
-              {i < currentIndex ? "✓" : i + 1}
-            </div>
-            <span className="text-xs hidden sm:inline">{s.label}</span>
-          </div>
-          {i < steps.length - 1 && (
-            <div
-              className="w-6 h-0.5"
-              style={{
-                background: i < currentIndex ? "var(--accent)" : "var(--input-border)",
-              }}
-            />
-          )}
-        </div>
-      ))}
     </div>
   );
 }

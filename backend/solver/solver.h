@@ -8,9 +8,14 @@
 #include <map>
 #include <fstream>
 #include <iostream>
-#include <codecvt>
 #include <locale>
 #include <cwctype>
+
+// Suppress deprecation warnings for codecvt (deprecated in C++17 but still functional)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#include <codecvt>
+#pragma GCC diagnostic pop
 
 #include "utils.h"
 
@@ -42,7 +47,10 @@ WordUtil::WordUtil(const std::string& wordlist_filename) : wordlist_filename(wor
         throw std::runtime_error("Failed to load wordlist: " + wordlist_filename);
     }
     
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
     stream.imbue(std::locale(std::locale(), new std::codecvt_utf8<wchar_t>));
+#pragma GCC diagnostic pop
     std::wstring line;
 
     std::map<wchar_t, int> frequency_map;

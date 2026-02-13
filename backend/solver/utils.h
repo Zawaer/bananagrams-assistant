@@ -5,7 +5,12 @@
 #include <algorithm>
 #include <chrono>
 #include <locale>
+
+// Suppress deprecation warnings for codecvt (deprecated in C++17 but still functional)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 #include <codecvt>
+#pragma GCC diagnostic pop
 
 namespace utils
 {
@@ -35,14 +40,20 @@ inline std::wstring toUpper(std::wstring str)
 
 inline std::wstring stringToWString(const std::string& str)
 {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
     std::wstring_convert<std::codecvt_utf8<wchar_t>> converter;
     return converter.from_bytes(str);
+#pragma GCC diagnostic pop
 }
 
 inline std::string wstringToString(const std::wstring& wstr)
 {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
     std::wstring_convert<std::codecvt_utf8<wchar_t>> converter;
     return converter.to_bytes(wstr);
+#pragma GCC diagnostic pop
 }
 
 struct Timer
