@@ -40,20 +40,34 @@ type SolveResult = {
 const TILE_PRESETS = [10, 15, 21];
 
 // Get server URLs from environment variables or fall back to local development
-const getServerUrl = (port: number, envVarName: string) => {
-  // In production, use environment variables
-  const envUrl = process.env[envVarName];
-  if (envUrl) return envUrl;
+const getDetectionServerUrl = () => {
+  // In production, use environment variable
+  if (process.env.NEXT_PUBLIC_DETECTION_SERVER_URL) {
+    return process.env.NEXT_PUBLIC_DETECTION_SERVER_URL;
+  }
   
   // In development, use current hostname (works on local network)
   if (typeof window !== "undefined") {
-    return `http://${window.location.hostname}:${port}`;
+    return `http://${window.location.hostname}:8081`;
   }
-  return `http://localhost:${port}`;
+  return `http://localhost:8081`;
 };
 
-const DETECTION_SERVER = getServerUrl(8081, "NEXT_PUBLIC_DETECTION_SERVER_URL");
-const SOLVER_SERVER = getServerUrl(8080, "NEXT_PUBLIC_SOLVER_SERVER_URL");
+const getSolverServerUrl = () => {
+  // In production, use environment variable
+  if (process.env.NEXT_PUBLIC_SOLVER_SERVER_URL) {
+    return process.env.NEXT_PUBLIC_SOLVER_SERVER_URL;
+  }
+  
+  // In development, use current hostname (works on local network)
+  if (typeof window !== "undefined") {
+    return `http://${window.location.hostname}:8080`;
+  }
+  return `http://localhost:8080`;
+};
+
+const DETECTION_SERVER = getDetectionServerUrl();
+const SOLVER_SERVER = getSolverServerUrl();
 
 const VALID_CHARS = new Set("abdeghijklmnoprstuvyäö".split(""));
 
