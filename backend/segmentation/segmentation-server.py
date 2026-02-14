@@ -77,13 +77,31 @@ model_url = os.environ.get("MODEL_DOWNLOAD_URL")
 if model_url:
     print(f"MODEL_DOWNLOAD_URL set, downloading from {model_url}...")
     import urllib.request
-    # Remove existing directory if it exists (from Git LFS causing IsADirectoryError)
-    if os.path.isdir("./model.onnx"):
-        print("Removing existing model.onnx directory...")
-        shutil.rmtree("./model.onnx", ignore_errors=True)
-    urllib.request.urlretrieve(model_url, "./model.onnx")
-    model = YOLO("./model.onnx", task="segment")
-    print("Model downloaded and loaded successfully.")
+    
+    model_path = "./model.onnx"
+    # Remove existing model directory/file if it exists (from Git LFS)
+    if os.path.exists(model_path):
+        try:
+            if os.path.isdir(model_path):
+                print("Removing existing model.onnx directory...")
+                shutil.rmtree(model_path)
+            else:
+                print("Removing existing model.onnx file...")
+                os.remove(model_path)
+        except Exception as e:
+            print(f"Warning: Could not remove existing model: {e}")
+    
+    # Download model
+    try:
+        print(f"Downloading model to {model_path}...")
+        urllib.request.urlretrieve(model_url, model_path)
+        print("Model downloaded successfully.")
+    except Exception as e:
+        print(f"Error downloading model: {e}")
+        raise
+    
+    model = YOLO(model_path, task="segment")
+    print("Model loaded successfully.")
 else:
     # Fallback to local paths for development
     MODEL_PATHS = [
