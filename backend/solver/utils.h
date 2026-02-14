@@ -58,7 +58,7 @@ inline std::string wstringToString(const std::wstring& wstr)
 
 struct Timer
 {
-    std::chrono::time_point<std::chrono::steady_clock> start_time, end_time;
+    std::chrono::time_point<std::chrono::high_resolution_clock> start_time, end_time;
 
     void start() { start_time = std::chrono::high_resolution_clock::now(); }
     void stop()  { end_time = std::chrono::high_resolution_clock::now(); }
