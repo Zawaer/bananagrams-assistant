@@ -1,5 +1,6 @@
 import base64
 import os
+import shutil
 
 import cv2
 import numpy as np
@@ -76,6 +77,10 @@ model_url = os.environ.get("MODEL_DOWNLOAD_URL")
 if model_url:
     print(f"MODEL_DOWNLOAD_URL set, downloading from {model_url}...")
     import urllib.request
+    # Remove existing directory if it exists (from Git LFS causing IsADirectoryError)
+    if os.path.isdir("./model.onnx"):
+        print("Removing existing model.onnx directory...")
+        shutil.rmtree("./model.onnx")
     urllib.request.urlretrieve(model_url, "./model.onnx")
     model = YOLO("./model.onnx", task="segment")
     print("Model downloaded and loaded successfully.")
