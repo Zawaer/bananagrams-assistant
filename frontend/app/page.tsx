@@ -235,28 +235,19 @@ export default function Home() {
     setSolution(null);
 
     try {
-      console.log("Solving for letters:", letters);
-      console.log("Solver URL:", SOLVER_SERVER);
-      
       const res = await fetch(`${SOLVER_SERVER}/solve`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ letters }),
       });
 
-      console.log("Response status:", res.status);
-
       if (!res.ok) throw new Error(`Solver error: ${res.status}`);
 
       const data: SolveResult = await res.json();
-      console.log("Solution received:", data);
-      
       setSolution(data);
       setStep("solved");
     } catch (e) {
-      const errorMsg = e instanceof Error ? e.message : "Solve error";
-      console.error("Solve error:", errorMsg, e);
-      setSolveError(errorMsg);
+      setSolveError(e instanceof Error ? e.message : "Solve error");
     } finally {
       setSolving(false);
     }
