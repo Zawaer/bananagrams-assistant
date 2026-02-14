@@ -35,7 +35,31 @@ You need to create **2 separate services** on Railway from the same repository:
 5. Copy the public URL from the Settings → Networking tab
    - Example: `https://segmentation-production-xyz789.up.railway.app`
 
-**Note**: The segmentation service may take longer on first deployment due to the YOLO model download.
+**Important: Handle the ONNX Model File**
+
+The ONNX model file (`yolo11x-seg-200epochs-100images.onnx`) is gitignored, so it's not in the repository. You have two options:
+
+**Option A: Use Git LFS (Recommended for large files)**
+```bash
+# Install Git LFS first
+git lfs install
+git lfs track "*.onnx"
+git add .gitattributes image-segmentation/models/*.onnx
+git commit -m "Add ONNX model with Git LFS"
+git push
+```
+Then Railway will automatically include the model during build.
+
+**Option B: Mount the model as a Railway volume**
+1. In Railway Service Settings → Volumes
+2. Create a volume at `/app/model.onnx`
+3. Generate data directory link and upload your `yolo11x-seg-200epochs-100images.onnx` file
+4. The app will use it automatically
+
+**Option C: Host the model externally (advanced)**
+- Upload the model to S3, GitHub releases, etc.
+- Set Railway environment variable: `MODEL_DOWNLOAD_URL=https://your-url/model.onnx`
+- The app will download it on first run
 
 ## Step 2: Deploy Frontend to Vercel
 
@@ -64,10 +88,9 @@ You need to create **2 separate services** on Railway from the same repository:
 - Verify wordlist.txt exists in `backend/wordlist-parser/`
 
 **Segmentation service**:
-- Check that `backend/segmentation` is set as Root Directory
-- Verify model file exists: `image-segmentation/models/yolo11x-seg-200epochs-100images.onnx`
-- If model file is too large (>500MB), Railway might fail. Consider using Git LFS.
-
+- Build fails with "Model file not found": See **Handle the ONNX Model File** section above
+- Use Git LFS, Railway volumes, or external hosting for the model
+- The Dockerfile no longer copies the model directly (it's gitignored)
 ### Frontend Can't Connect to Backend
 
 - Verify environment variables in Vercel are set correctly

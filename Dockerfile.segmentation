@@ -21,9 +21,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY backend/segmentation/segmentation-server.py ./
 
-# Copy ONNX model
-COPY image-segmentation/models/yolo11x-seg-200epochs-100images.onnx ./model.onnx
-
 EXPOSE 8081
 
+# The model will be downloaded on first run if not present
+# (or can be mounted as a volume if available locally)
 CMD ["python", "segmentation-server.py"]

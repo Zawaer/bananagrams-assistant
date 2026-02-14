@@ -68,15 +68,38 @@ CLASS_NAME_TO_LABEL = {
 }
 
 # Load ONNX model at startup
-# Check for production path first (Docker), then fall back to local development path
-if os.path.exists("./model.onnx"):
-    MODEL_PATH = "./model.onnx"
-else:
-    MODEL_PATH = "../../image-segmentation/models/yolo11x-seg-200epochs-100images.onnx"
+# Try multiple paths: local Docker volume, local dev, or download if configured
+MODEL_PATHS = [
+    "./model.onnx",  # Docker volume or current directory
+    "../../image-segmentation/models/yolo11x-seg-200epochs-100images.onnx",  # Local development
+]
 
-print(f"Loading ONNX model from: {os.path.abspath(MODEL_PATH)}")
-model = YOLO(MODEL_PATH, task="segment")
-print("Model loaded successfully.")
+MODEL_PATH = None
+for path in MODEL_PATHS:
+    if os.path.exists(path):
+        MODEL_PATH = path
+        break
+
+if MODEL_PATH:
+    print(f"Loading ONNX model from: {os.path.abspath(MODEL_PATH)}")
+    model = YOLO(MODEL_PATH, task="segment")
+    print("Model loaded successfully.")
+else:
+    # If model not found locally and a URL is provided, download it
+    model_url = os.environ.get("MODEL_DOWNLOAD_URL")
+    if model_url:
+        print(f"Model not found locally, downloading from {model_url}...")
+        import urllib.request
+        urllib.request.urlretrieve(model_url, "./model.onnx")
+        model = YOLO("./model.onnx", task="segment")
+        print("Model downloaded and loaded successfully.")
+    else:
+        raise RuntimeError(
+            "Model file not found! "
+            "For local development: Ensure ../../image-segmentation/models/yolo11x-seg-200epochs-100images.onnx exists. "
+            "For production: Mount the model file to ./model.onnx or set MODEL_DOWNLOAD_URL env var. "
+            "See DEPLOYMENT.md for instructions."
+        )
 
 
 @app.route("/health", methods=["GET"])
