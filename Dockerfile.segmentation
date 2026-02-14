@@ -30,5 +30,5 @@ COPY backend/segmentation/segmentation-server.py ./
 
 EXPOSE 8081
 
-# The model will be downloaded on first run via MODEL_DOWNLOAD_URL env var
-CMD ["python", "-u", "segmentation-server.py"]
+# Use gunicorn production server instead of Flask dev server
+CMD ["gunicorn", "--bind", "0.0.0.0:8081", "--workers", "2", "--timeout", "120", "segmentation-server:app"]

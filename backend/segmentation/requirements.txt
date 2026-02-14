@@ -1,5 +1,6 @@
 flask==3.0.0
 flask-cors==4.0.0
+gunicorn==21.2.0
 # Use CPU-only PyTorch to reduce image size
 --extra-index-url https://download.pytorch.org/whl/cpu
 torch==2.1.0+cpu
