@@ -80,7 +80,7 @@ if model_url:
     # Remove existing directory if it exists (from Git LFS causing IsADirectoryError)
     if os.path.isdir("./model.onnx"):
         print("Removing existing model.onnx directory...")
-        shutil.rmtree("./model.onnx")
+        shutil.rmtree("./model.onnx", ignore_errors=True)
     urllib.request.urlretrieve(model_url, "./model.onnx")
     model = YOLO("./model.onnx", task="segment")
     print("Model downloaded and loaded successfully.")
