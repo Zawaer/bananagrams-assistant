@@ -20,9 +20,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application files
 COPY segmentation-server.py .
 
-# Copy the ONNX model
-COPY ../../image-segmentation/models/yolo11x-seg-200epochs-100images.onnx ./model.onnx
-
 # Expose port
 EXPOSE 8081
 
