@@ -23,5 +23,5 @@ COPY segmentation-server.py .
 # Expose port
 EXPOSE 8081
 
-# Run the server
-CMD ["python", "segmentation-server.py"]
+# Run the server with 1 worker + preload to minimize memory usage
+CMD ["gunicorn", "--bind", "0.0.0.0:8081", "--workers", "1", "--timeout", "120", "--preload", "segmentation-server:app"]
