@@ -78,18 +78,8 @@ if model_url:
     print(f"MODEL_DOWNLOAD_URL set, downloading from {model_url}...")
     import urllib.request
     
-    model_path = "./model.onnx"
-    # Remove existing model directory/file if it exists (from Git LFS)
-    if os.path.exists(model_path):
-        try:
-            if os.path.isdir(model_path):
-                print("Removing existing model.onnx directory...")
-                shutil.rmtree(model_path)
-            else:
-                print("Removing existing model.onnx file...")
-                os.remove(model_path)
-        except Exception as e:
-            print(f"Warning: Could not remove existing model: {e}")
+    # Use /tmp to avoid conflicts with Railway volume mount at ./model.onnx
+    model_path = "/tmp/model.onnx"
     
     # Download model
     try:
