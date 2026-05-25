@@ -282,6 +282,30 @@ Located in `backend/segmentation/segmentation-server.py`:
 5. **Correction**: Manually edit detected letters if needed
 6. **Solution**: View optimal word placement grid
 
+## The Scale of the Problem
+
+To understand why the solver needs to be fast, consider the sheer number of possible Bananagrams grids — even ignoring the dictionary entirely.
+
+The 1.17 nonillion figure represents the total number of dictionary-free grids you can make with 21 completely unique letter tiles. It is calculated by multiplying two massive combinatorial values: how many board shapes you can build and how many ways you can fill those shapes with letters.
+
+**Step 1: Board Shapes (Fixed Polyominoes)**
+
+Any connected layout of 21 square tiles placed on a grid is called a fixed polyomino. According to the [Online Encyclopedia of Integer Sequences (A001168)](https://oeis.org/A001168), there are exactly **22,964,779,660** unique 21-square configurations. These are counted as "fixed" because rotating a layout 90° creates a new reading path, so orientation strictly matters.
+
+**Step 2: Letter Arrangements**
+
+Next, calculate how many ways 21 distinct letters can be placed into any one of those shapes. Arranging 21 unique items yields 21! possibilities:
+
+$$21! = 51{,}090{,}942{,}171{,}709{,}440{,}000$$
+
+That is 51 quintillion ways to slot letters across the grid.
+
+**Step 3: The Multiplication**
+
+$$22{,}964{,}779{,}660 \times 51{,}090{,}942{,}171{,}709{,}440{,}000 = 1{,}173{,}292{,}229{,}595{,}109{,}175{,}141{,}990{,}400{,}000$$
+
+Rounded: **1.17 nonillion** total layouts. The real search space — where every word on the board must be a valid dictionary word — is a tiny sliver of this, which is exactly why the C++ backtracking solver prunes aggressively rather than exploring blindly.
+
 ## Technical Details
 
 - **Solver**: Recursive backtracking with anagram-based word lookup, collision detection for safe placement
