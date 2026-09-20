@@ -9,7 +9,7 @@ A full-stack computer vision + search project: a YOLO11x segmentation model read
 </p>
 
 <p align="center">
-  <em>Real run, nothing staged: 21 tiles detected at 97% mean confidence in 1.6 s, then packed into a full grid in 4 ms.</em>
+  <em>Real run, nothing staged: 21 tiles detected at 97% mean confidence in 1.4 s, then packed into a full grid in 7 ms.</em>
 </p>
 
 ---
@@ -48,7 +48,7 @@ O I K E U S L A I T O S
     Ä
 ```
 
-`OIKEUSLAITOS` × `ISKIJÄ` × `SIILI`: 21 tiles, zero left over, every horizontal and vertical run a valid Finnish word. Found in **4 ms**.
+`OIKEUSLAITOS` × `ISKIJÄ` × `SIILI`: 21 tiles, zero left over, every horizontal and vertical run a valid Finnish word. Found in **7 ms**.
 
 ---
 
@@ -116,14 +116,14 @@ End-to-end on an **Apple M3, CPU-only inference** (no GPU, no CoreML/TensorRT ac
 
 | Stage | Time |
 |---|---|
-| Preprocess (image decode) | 11 ms |
-| YOLO inference | 1 101 ms |
-| Postprocess (NMS, annotation, encoding) | 496 ms |
-| **Detection total** | **1 610 ms** |
-| Solver (21 tiles) | 4 ms |
-| **Photo → finished grid** | **~1.6 s** |
+| Preprocess (image decode) | 12 ms |
+| YOLO inference | 930 ms |
+| Postprocess (NMS, annotation, encoding) | 452 ms |
+| **Detection total** | **1 394 ms** |
+| Solver (21 tiles) | 7 ms |
+| **Photo → finished grid** | **~1.4 s** |
 
-Those are the figures from the run shown in the screenshots above. Detection lands between roughly 1.3 s and 1.6 s depending on what else the machine is doing, and the very first request after startup is slower while the model warms up.
+Detection is the median of 8 consecutive warm requests, which ranged 1 349 to 1 540 ms. Two things move it: the first request after startup is slower while the model warms up, and inference slows down when it is sharing the CPU. The stats panel in the screenshot above reads higher than this table for exactly that reason, since a browser and a dev server were running alongside it while the shot was taken.
 
 The solver is now a rounding error. Reading the physical world is the entire cost.
 
@@ -301,7 +301,7 @@ with no extra configuration. See [RUNNING.md](RUNNING.md) for more detail.
 // response
 {
   "solved": true,
-  "time_ms": 4,
+  "time_ms": 7,
   "grid": [
     [null, null, null, null, null, null, "S",  null, null, null, null, null],
     [null, null, "I",  null, null, null, "I",  null, null, null, null, null],
@@ -330,8 +330,8 @@ The request body may use raw UTF-8 or `\uXXXX` escapes for `ä` and `ö`. Both d
   "letter_list": [{ "letter": "j", "confidence": 0.985 }, ...],
   "annotated_image": "<base64 jpeg>",
   "count": 21,
-  "timing":      { "preprocess_ms": 11, "inference_ms": 1101, "postprocess_ms": 496, "total_ms": 1610 },
-  "yolo_timing": { "preprocess_ms": 2,  "inference_ms": 983,  "postprocess_ms": 6 },
+  "timing":      { "preprocess_ms": 12, "inference_ms": 930, "postprocess_ms": 452, "total_ms": 1394 },
+  "yolo_timing": { "preprocess_ms": 2,  "inference_ms": 882, "postprocess_ms": 7 },
   "avg_confidence": 97,
   "thresholds": { "nms": 0.8, "confidence": 0.8 }
 }
