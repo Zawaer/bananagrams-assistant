@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -15,6 +15,12 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Bananagrams Assistant",
   description: "Finnish Bananagrams game assistant with tile detection",
+};
+
+export const viewport: Viewport = {
+  // Tints the browser chrome on mobile to match the page, which is where
+  // this gets used most.
+  themeColor: "#1a1a2e",
 };
 
 export default function RootLayout({
