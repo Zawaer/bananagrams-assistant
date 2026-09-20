@@ -98,17 +98,17 @@ In live use the server additionally discards anything under a 0.8 confidence thr
 
 ### Solver success rate
 
-The solver was rewritten to do real backtracking (see below). Measured in-process — no HTTP in the loop — over 200 randomly generated hands per size, letters drawn independently in proportion to their frequency in the Finnish wordlist. Both versions saw the identical hands, and **every returned grid was machine-checked**: it must use exactly the dealt tiles, form a single connected component, and every horizontal and vertical run of 2+ letters must be in the dictionary.
+Measured in-process — no HTTP in the loop — over 200 randomly generated hands per size, letters drawn independently in proportion to their frequency in the Finnish wordlist. **Every grid the solver returns is machine-checked**: it must use exactly the dealt tiles, form a single connected component, and every horizontal and vertical run of 2+ letters must be in the dictionary.
 
-| Hand | Before | After | Median time before → after |
-|---|---|---|---|
-| 10 tiles | 133/200 (66.5%) | **176/200 (88.0%)** | 4 ms → <1 ms |
-| 15 tiles | 154/200 (77.0%) | **193/200 (96.5%)** | 11 ms → <1 ms |
-| 21 tiles | 173/200 (86.5%) | **197/200 (98.5%)** | 44 ms → <1 ms |
+| Hand | Solved | Median | p95 | Slowest |
+|---|---|---|---|---|
+| 10 tiles | **176/200 (88.0%)** | <1 ms | <1 ms | 11 ms |
+| 15 tiles | **193/200 (96.5%)** | <1 ms | 7 ms | 1.2 s |
+| 21 tiles | **197/200 (98.5%)** | <1 ms | 31 ms | 1.3 s |
 
-Grids that failed validation: **8 before, 0 after**. The old version would occasionally return a board containing a non-word (`SHOTV`) or one that didn't use the dealt tiles — it reported success without checking that the runs it created were real words.
+All 600 grids passed validation — no invalid words, no stray tiles, no disconnected boards.
 
-At 21 tiles the p95 is 31 ms and the worst case 1.3 s. The three unsolved hands all hit the search budget rather than proving anything, and all three were extreme draws with only 4–5 vowels among 21 tiles — a real tile bag produces those far less often than independent sampling does.
+The hands it doesn't solve hit the search budget rather than proving anything, and they are extreme draws: the three misses at 21 tiles had only 4–5 vowels between them. A real tile bag produces those far less often than independent sampling does.
 
 ### Latency
 
@@ -153,7 +153,7 @@ Roughly **1.17 nonillion** layouts. The space where every run is also a valid di
 4. A placement is legal only if the cells before and after it are empty (so the run it forms is exactly that word) and **every perpendicular run it creates is itself a dictionary word**. Tiles are then deducted based on the cells actually written, so a word crossing two existing letters is accounted for correctly.
 5. Succeed when the hand is empty. On a dead end, undo the grid writes, the spent tiles and the used-word marker, and try the next candidate.
 
-Step 4 is where most of the gain comes from. The previous version forbade adjacency altogether rather than validating the words that adjacency creates, which both rejected legal dense boards and let illegal ones through. Step 5 is the other half: the previous version mutated the board, the hand and the wordlist without ever restoring them, so a failed branch poisoned everything after it — it was a greedy descent wearing a recursive function's clothes.
+Step 4 is what lets the board get dense: a placement is judged by the words it creates, not by whether it happens to touch something. Step 5 is what makes the recursion real — every branch is fully reversible, so the search can commit to a candidate and still get back if it leads nowhere.
 
 The search is bounded by a node and wall-clock budget (300,000 nodes / 5 s by default, both tunable on `Board`). A `solved: false` therefore means "no packing found within budget", which is not the same as proving the hand impossible.
 
