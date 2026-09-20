@@ -5,11 +5,19 @@
 A full-stack computer vision + search project: a YOLO11x segmentation model reads the letters off physical tiles, and a from-scratch C++ backtracking solver arranges every one of them into a connected crossword of valid Finnish words.
 
 <p align="center">
-  <img src="docs/demo.gif" width="320" alt="End-to-end demo: choose tile count, upload a photo, tiles are detected, solution grid appears" />
+  <img src="docs/hero-solved.png" width="860" alt="The finished grid: OIKEUSLAITOS crossing ISKIJA and SIILI, with the words it placed listed underneath" />
 </p>
 
 <p align="center">
-  <em>Real run, nothing staged: 21 tiles detected at 97% mean confidence in 1.4 s, then packed into a full grid in 7 ms.</em>
+  <em>Real run, nothing staged: a photo of 21 scattered tiles in, this grid out.</em>
+</p>
+
+<p align="center">
+  <img src="docs/demo.gif" width="300" alt="End-to-end demo: choose tile count, upload a photo, tiles are detected, solution grid appears" />
+</p>
+
+<p align="center">
+  <em>The whole flow, on the phone it is meant to be used from.</em>
 </p>
 
 ---
