@@ -78,7 +78,7 @@ if model_url:
     print(f"MODEL_DOWNLOAD_URL set, downloading from {model_url}...")
     import urllib.request
     
-    # Use /tmp to avoid conflicts with Railway volume mount at ./model.onnx
+    # Download into /tmp so it never collides with a model mounted at ./model.onnx
     model_path = "/tmp/model.onnx"
     
     # Download model
