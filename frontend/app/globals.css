@@ -44,14 +44,6 @@ body {
   flex-shrink: 0;
 }
 
-.tile-empty {
-  width: 40px;
-  height: 40px;
-  min-width: 40px;
-  min-height: 40px;
-  flex-shrink: 0;
-}
-
 /* Hide number input spinner arrows */
 input[type="number"]::-webkit-outer-spin-button,
 input[type="number"]::-webkit-inner-spin-button {

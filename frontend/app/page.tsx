@@ -71,6 +71,56 @@ const SOLVER_SERVER = getSolverServerUrl();
 
 const VALID_CHARS = new Set("abdeghijklmnoprstuvyäö".split(""));
 
+// Gap between tiles in the solution grid, in px
+const GRID_GAP = 2;
+// Tiles never render larger than this; they shrink to fit narrow screens
+const MAX_TILE = 40;
+const MIN_TILE = 13;
+
+// The solver routinely finishes inside a millisecond; "0 ms" reads like a bug,
+// so show a sub-millisecond marker instead.
+function formatMs(ms: number) {
+  if (ms < 1) return "<1 ms";
+  if (ms >= 1000) return `${(ms / 1000).toFixed(1)} s`;
+  return `${ms} ms`;
+}
+
+// Pull the horizontal and vertical runs of 2+ letters out of a solved grid -
+// i.e. the words the solver actually placed.
+function extractWords(grid: (string | null)[][]) {
+  const rows = grid.length;
+  const cols = grid.reduce((m, r) => Math.max(m, r.length), 0);
+  const at = (y: number, x: number) => grid[y]?.[x] ?? null;
+
+  const across: string[] = [];
+  for (let y = 0; y < rows; y++) {
+    let run = "";
+    for (let x = 0; x <= cols; x++) {
+      const c = at(y, x);
+      if (c) run += c;
+      else {
+        if (run.length >= 2) across.push(run);
+        run = "";
+      }
+    }
+  }
+
+  const down: string[] = [];
+  for (let x = 0; x < cols; x++) {
+    let run = "";
+    for (let y = 0; y <= rows; y++) {
+      const c = at(y, x);
+      if (c) run += c;
+      else {
+        if (run.length >= 2) down.push(run);
+        run = "";
+      }
+    }
+  }
+
+  return { across, down };
+}
+
 // ============================================================================
 // Main component
 // ============================================================================
@@ -105,6 +155,12 @@ export default function Home() {
   const [solving, setSolving] = useState(false);
   const [solution, setSolution] = useState<SolveResult | null>(null);
   const [solveError, setSolveError] = useState<string | null>(null);
+  const [lastLetters, setLastLetters] = useState("");
+
+  // Solution grid sizing: tiles shrink so the whole board fits the screen
+  // rather than forcing the user to scroll a result sideways.
+  const gridWrapRef = useRef<HTMLDivElement>(null);
+  const [tileSize, setTileSize] = useState(MAX_TILE);
 
   // ============================================================================
   // Camera
@@ -190,6 +246,70 @@ export default function Home() {
     };
   }, []);
 
+  // Fit the solution grid to the available width. A 21-tile hand can produce a
+  // board 17 columns wide, which is ~710px of fixed-size tiles - far past the
+  // edge of a phone - so scale the tiles down instead of scrolling.
+  const gridCols = solution?.grid?.length
+    ? solution.grid.reduce((m, r) => Math.max(m, r.length), 0)
+    : 0;
+
+  useEffect(() => {
+    if (!gridCols) return;
+    const el = gridWrapRef.current;
+    if (!el) return;
+
+    const fit = () => {
+      const available = el.clientWidth;
+      if (!available) return;
+      const perTile = (available - GRID_GAP * (gridCols - 1)) / gridCols;
+      setTileSize(Math.max(MIN_TILE, Math.min(MAX_TILE, Math.floor(perTile))));
+    };
+
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [gridCols]);
+
+  const tileStyle = {
+    width: tileSize,
+    height: tileSize,
+    minWidth: tileSize,
+    minHeight: tileSize,
+    fontSize: Math.max(8, Math.round(tileSize * 0.55)),
+    borderWidth: tileSize < 20 ? 1 : 2,
+    borderRadius: tileSize < 20 ? 2 : 4,
+  };
+
+  const emptyTileStyle = {
+    width: tileSize,
+    height: tileSize,
+    minWidth: tileSize,
+    minHeight: tileSize,
+    flexShrink: 0,
+  };
+
+  const placedTiles = solution?.grid
+    ? solution.grid.reduce(
+        (n, row) => n + row.reduce((m, c) => m + (c ? 1 : 0), 0),
+        0
+      )
+    : 0;
+
+  const solutionWords =
+    solution?.solved && solution.grid
+      ? extractWords(solution.grid)
+      : { across: [], down: [] };
+
+  // Failed solve shouldn't be a dead end: drop the user back on the capture
+  // step with the attempted letters prefilled so they can fix a misread tile.
+  const editLetters = () => {
+    setManualInput(lastLetters);
+    setSolution(null);
+    setSolveError(null);
+    setStep("capture");
+  };
+
   // ============================================================================
   // Detection
   // ============================================================================
@@ -230,6 +350,7 @@ export default function Home() {
   // ============================================================================
 
   const solvePuzzle = useCallback(async (letters: string) => {
+    setLastLetters(letters);
     setSolving(true);
     setSolveError(null);
     setSolution(null);
@@ -319,7 +440,13 @@ export default function Home() {
   // ============================================================================
 
   return (
-    <div className="flex min-h-screen flex-col items-center px-4 py-8">
+    <div className="flex min-h-screen flex-col items-center px-4 py-6">
+      <header className="mb-2">
+        <h1 className="text-lg font-bold tracking-tight">
+          Bananagrams <span style={{ color: "var(--accent)" }}>Assistant</span>
+        </h1>
+      </header>
+
       {/* ── SETUP ── */}
       {step === "setup" && (
         <div className="w-full max-w-md flex flex-col items-center gap-6 mt-6">
@@ -485,10 +612,12 @@ export default function Home() {
                   <button
                     onClick={handleManualSolve}
                     disabled={manualInput.length < 2}
-                    className="rounded-lg px-6 py-3 font-bold text-black transition-all cursor-pointer hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
-                    style={{
-                      background: manualInput.length >= 2 ? "var(--accent)" : "var(--input-border)",
-                    }}
+                    className="rounded-lg px-6 py-3 font-bold transition-all cursor-pointer hover:opacity-90 disabled:cursor-not-allowed disabled:hover:opacity-100"
+                    style={
+                      manualInput.length >= 2
+                        ? { background: "var(--accent)", color: "#000", border: "2px solid var(--accent)" }
+                        : { background: "var(--input-bg)", color: "var(--foreground)", border: "2px solid var(--input-border)", opacity: 0.7 }
+                    }
                   >
                     Solve
                   </button>
@@ -700,8 +829,12 @@ export default function Home() {
                 <button
                   onClick={handleCorrectionSubmit}
                   disabled={correctedLetters.length < 2}
-                  className="rounded-lg px-5 py-2 font-bold text-black cursor-pointer transition-all hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
-                  style={{ background: "var(--accent)" }}
+                  className="rounded-lg px-5 py-2 font-bold cursor-pointer transition-all hover:opacity-90 disabled:cursor-not-allowed disabled:hover:opacity-100"
+                  style={
+                    correctedLetters.length >= 2
+                      ? { background: "var(--accent)", color: "#000", border: "2px solid var(--accent)" }
+                      : { background: "var(--input-bg)", color: "var(--foreground)", border: "2px solid var(--input-border)", opacity: 0.7 }
+                  }
                 >
                   Solve
                 </button>
@@ -766,49 +899,117 @@ export default function Home() {
 
       {/* ── SOLVED ── */}
       {step === "solved" && solution && (
-        <div className="w-full max-w-lg md:max-w-4xl flex flex-col items-center gap-4 mt-6">
+        <div className="w-full max-w-lg md:max-w-4xl flex flex-col items-center gap-5 mt-4">
           {solution.solved ? (
             <>
-              <h2 className="text-xl font-semibold" style={{ color: "#4ade80" }}>
-                Solution found!
-              </h2>
-              <p className="text-sm opacity-60">
-                Solved in {solution.time_ms} ms
-              </p>
+              <div className="flex flex-col items-center gap-1">
+                <h2 className="text-xl font-semibold" style={{ color: "#4ade80" }}>
+                  Solution found!
+                </h2>
+                <p className="text-sm opacity-60">
+                  {placedTiles} tiles placed in {formatMs(solution.time_ms)}
+                </p>
+              </div>
 
-              {/* Solution grid */}
-              <div className="flex flex-col gap-0.5 overflow-x-auto max-w-full p-2">
-                {solution.grid.map((row, y) => (
-                  <div key={y} className="flex gap-0.5 shrink-0">
-                    {row.map((cell, x) =>
-                      cell ? (
-                        <div key={x} className="tile">
-                          {cell}
+              {/* Solution grid - tiles scale down so the board always fits */}
+              <div ref={gridWrapRef} className="w-full flex justify-center">
+                <div className="flex flex-col" style={{ gap: GRID_GAP }}>
+                  {solution.grid.map((row, y) => (
+                    <div key={y} className="flex" style={{ gap: GRID_GAP }}>
+                      {Array.from({ length: gridCols }, (_, x) => {
+                        const cell = row[x] ?? null;
+                        return cell ? (
+                          <div key={x} className="tile" style={tileStyle}>
+                            {cell}
+                          </div>
+                        ) : (
+                          <div key={x} style={emptyTileStyle} />
+                        );
+                      })}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Words the solver placed */}
+              {(solutionWords.across.length > 0 || solutionWords.down.length > 0) && (
+                <div
+                  className="w-full rounded-lg px-4 py-3"
+                  style={{ background: "var(--input-bg)", border: "2px solid var(--input-border)" }}
+                >
+                  <div className="flex flex-col gap-2.5">
+                    {([
+                      ["Across", solutionWords.across],
+                      ["Down", solutionWords.down],
+                    ] as const).map(([label, list]) =>
+                      list.length === 0 ? null : (
+                        <div key={label} className="flex flex-wrap items-baseline gap-x-2 gap-y-1.5">
+                          <span className="text-xs uppercase tracking-wide opacity-50 w-14 shrink-0">
+                            {label}
+                          </span>
+                          {list.map((w, i) => (
+                            <span
+                              key={`${w}-${i}`}
+                              className="rounded px-2 py-0.5 text-sm font-mono tracking-wide"
+                              style={{ background: "#1f2b4d", color: "var(--foreground)" }}
+                            >
+                              {w}
+                            </span>
+                          ))}
                         </div>
-                      ) : (
-                        <div key={x} className="tile-empty" />
                       )
                     )}
                   </div>
-                ))}
-              </div>
+                </div>
+              )}
             </>
           ) : (
             <>
-              <h2 className="text-xl font-semibold" style={{ color: "#f87171" }}>
-                No solution found
-              </h2>
-              <p className="text-sm opacity-60">
-                Double-check the letters and try again
-              </p>
+              <div className="flex flex-col items-center gap-1">
+                <h2 className="text-xl font-semibold" style={{ color: "#f87171" }}>
+                  No solution found
+                </h2>
+                <p className="text-sm opacity-60 text-center max-w-sm">
+                  The solver searched for {formatMs(solution.time_ms)} without finding a way to
+                  use every tile. That usually means a letter was misread, or the hand is
+                  simply short on vowels.
+                </p>
+              </div>
+
+              {lastLetters && (
+                <div
+                  className="w-full rounded-lg px-4 py-3 text-center"
+                  style={{ background: "var(--input-bg)", border: "2px solid var(--input-border)" }}
+                >
+                  <div className="text-xs uppercase tracking-wide opacity-50 mb-1.5">
+                    Letters tried
+                  </div>
+                  <div className="font-mono tracking-widest uppercase break-all">
+                    {lastLetters}
+                  </div>
+                </div>
+              )}
             </>
           )}
 
           {/* Actions */}
-          <div className="flex justify-center w-full mt-4">
+          <div className="flex gap-3 w-full max-w-sm mt-1">
+            {!solution.solved && lastLetters && (
+              <button
+                onClick={editLetters}
+                className="flex-1 rounded-lg px-4 py-3 font-bold cursor-pointer transition-all"
+                style={{
+                  background: "var(--input-bg)",
+                  border: "2px solid var(--input-border)",
+                  color: "var(--foreground)",
+                }}
+              >
+                Edit letters
+              </button>
+            )}
             <button
               onClick={resetGame}
-              className="rounded-lg px-8 py-3 font-bold text-black cursor-pointer transition-all hover:opacity-90"
+              className="flex-1 rounded-lg px-4 py-3 font-bold text-black cursor-pointer transition-all hover:opacity-90"
               style={{ background: "var(--accent)" }}
             >
               New game

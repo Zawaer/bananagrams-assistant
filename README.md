@@ -9,7 +9,7 @@ A full-stack computer vision + search project: a YOLO11x segmentation model read
 </p>
 
 <p align="center">
-  <em>Real run, nothing staged: 21 tiles detected at 97% mean confidence in 1.4 s, then packed into a full grid in 4 ms.</em>
+  <em>Real run, nothing staged: 21 tiles detected at 97% mean confidence in 1.6 s, then packed into a full grid in 4 ms.</em>
 </p>
 
 ---
@@ -56,18 +56,20 @@ O I K E U S L A I T O S
 
 <table>
 <tr>
-<td width="50%"><img src="docs/screens/01-setup.png" alt="Setup screen: choose 10, 15, 21 or a custom tile count" /></td>
-<td width="50%"><img src="docs/screens/03-detection.jpg" alt="Detection screen showing the annotated image and a 21 / 21 match" /></td>
+<td width="33%"><img src="docs/screens/01-setup.png" alt="Setup screen: choose 10, 15, 21 or a custom tile count" /></td>
+<td width="33%"><img src="docs/screens/03-detection.jpg" alt="Detection screen showing the annotated image and a 21 / 21 match" /></td>
+<td width="33%"><img src="docs/screens/05-solved.png" alt="Solution screen showing the completed crossword grid and the words placed" /></td>
 </tr>
 <tr>
 <td align="center"><b>Pick your hand size</b></td>
-<td align="center"><b>Confirm the read before solving</b></td>
+<td align="center"><b>Confirm the read</b></td>
+<td align="center"><b>Get the grid</b></td>
 </tr>
 </table>
 
-<p align="center">
-  <img src="docs/screens/05-solved.png" width="700" alt="Solution screen showing the completed crossword grid" />
-</p>
+Tiles in the solution grid size themselves to the board, so a 17-column
+answer still fits a phone screen without scrolling sideways, and the words
+it placed are listed underneath.
 
 Every run exposes its own timing breakdown, so the pipeline is measurable rather than a black box:
 
@@ -115,13 +117,13 @@ End-to-end on an **Apple M3, CPU-only inference** (no GPU, no CoreML/TensorRT ac
 | Stage | Time |
 |---|---|
 | Preprocess (image decode) | 11 ms |
-| YOLO inference | 834 ms |
-| Postprocess (NMS, annotation, encoding) | 448 ms |
-| **Detection total** | **1 294 ms** |
+| YOLO inference | 1 101 ms |
+| Postprocess (NMS, annotation, encoding) | 496 ms |
+| **Detection total** | **1 610 ms** |
 | Solver (21 tiles) | 4 ms |
-| **Photo → finished grid** | **~1.3 s** |
+| **Photo → finished grid** | **~1.6 s** |
 
-Detection figures are the median of 8 consecutive runs on the same image; it varies by roughly ±100 ms run to run, and more if the machine is busy.
+Those are the figures from the run shown in the screenshots above. Detection lands between roughly 1.3 s and 1.6 s depending on what else the machine is doing, and the very first request after startup is slower while the model warms up.
 
 The solver is now a rounding error. Reading the physical world is the entire cost.
 
@@ -310,8 +312,8 @@ The request body may use raw UTF-8 or `\uXXXX` escapes for `ä` and `ö` — bot
   "letter_list": [{ "letter": "j", "confidence": 0.985 }, ...],
   "annotated_image": "<base64 jpeg>",
   "count": 21,
-  "timing":      { "preprocess_ms": 11, "inference_ms": 926, "postprocess_ms": 448, "total_ms": 1387 },
-  "yolo_timing": { "preprocess_ms": 2,  "inference_ms": 885, "postprocess_ms": 6 },
+  "timing":      { "preprocess_ms": 11, "inference_ms": 1101, "postprocess_ms": 496, "total_ms": 1610 },
+  "yolo_timing": { "preprocess_ms": 2,  "inference_ms": 983,  "postprocess_ms": 6 },
   "avg_confidence": 97,
   "thresholds": { "nms": 0.8, "confidence": 0.8 }
 }
