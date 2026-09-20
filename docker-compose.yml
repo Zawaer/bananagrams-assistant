@@ -20,3 +20,15 @@ services:
     ports:
       - "8080:8080"
     restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    image: bananagrams/frontend:latest
+    ports:
+      - "3000:3000"
+    depends_on:
+      - solver
+      - segmentation
+    restart: unless-stopped

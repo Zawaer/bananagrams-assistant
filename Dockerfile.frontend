@@ -1,0 +1,34 @@
+# Dockerfile for the Next.js frontend.
+# Build from the repository root: docker build -f Dockerfile.frontend .
+
+FROM node:22-alpine AS deps
+WORKDIR /app
+RUN corepack enable
+COPY frontend/package.json frontend/yarn.lock frontend/.yarnrc.yml ./
+RUN yarn install --immutable
+
+FROM node:22-alpine AS builder
+WORKDIR /app
+RUN corepack enable
+COPY --from=deps /app/node_modules ./node_modules
+COPY frontend/ ./
+RUN yarn build
+
+FROM node:22-alpine AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+ENV PORT=3000
+# Listen on all interfaces so the container is reachable from the host, and
+# from other devices on the same network.
+ENV HOSTNAME=0.0.0.0
+
+RUN addgroup -S -g 1001 nodejs && adduser -S -u 1001 -G nodejs nextjs
+
+# "output: standalone" puts a ready-to-run server in .next/standalone, but the
+# static assets have to be copied alongside it.
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+
+USER nextjs
+EXPOSE 3000
+CMD ["node", "server.js"]

@@ -247,9 +247,16 @@ bananagrams-assistant/
 ### Docker Compose (recommended)
 
 ```bash
-docker compose up --build -d      # solver on :8080, segmentation on :8081
-docker compose down
+make up      # build and start all three services
+make down    # stop them
+make logs    # follow the logs
 ```
+
+`make help` lists the rest. These are thin wrappers over `docker compose`, so
+`docker compose up --build -d` works just as well.
+
+That brings up all three services: the frontend on `:3000`, the solver on
+`:8080` and the detection server on `:8081`.
 
 The compose file mounts the ONNX model from `image-segmentation/models/`. Alternatively set `MODEL_DOWNLOAD_URL` to fetch it on first run.
 
@@ -272,7 +279,10 @@ cd frontend
 yarn install && yarn dev
 ```
 
-Then open `http://localhost:3000`. See [RUNNING.md](RUNNING.md) for more detail and [DEPLOYMENT.md](DEPLOYMENT.md) for the hosted path.
+Then open `http://localhost:3000`, or `http://<your-machine-ip>:3000` from a
+phone on the same network, which is the point of the thing. The frontend
+derives the backend URLs from whatever hostname you load it on, so that works
+with no extra configuration. See [RUNNING.md](RUNNING.md) for more detail.
 
 ---
 
