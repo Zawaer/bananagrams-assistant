@@ -3,3 +3,10 @@
 models/
 *.pt
 *.onnx
+.venv/
+venv/
+__pycache__/
+*.cache
+
+# compiled solver binary - build it with the command in the README
+backend/solver/solver-server
