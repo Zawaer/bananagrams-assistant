@@ -1,0 +1,22 @@
+services:
+  segmentation:
+    build:
+      context: .
+      dockerfile: Dockerfile.segmentation
+    image: bananagrams/segmentation:latest
+    ports:
+      - "8081:8081"
+    volumes:
+      - ./image-segmentation/models/yolo11x-seg-200epochs-100images.onnx:/app/model.onnx:ro
+    environment:
+      - MODEL_DOWNLOAD_URL=${MODEL_DOWNLOAD_URL:-}
+    restart: unless-stopped
+
+  solver:
+    build:
+      context: .
+      dockerfile: Dockerfile.solver
+    image: bananagrams/solver:latest
+    ports:
+      - "8080:8080"
+    restart: unless-stopped

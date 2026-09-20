@@ -20,23 +20,124 @@ static WordUtil* g_wordUtil = nullptr;
 // Minimal JSON helpers (no external dependency)
 // ============================================================================
 
-// Extract a string value for a given key from a simple JSON object
+// Append a Unicode code point to a UTF-8 encoded std::string
+static void appendUtf8(std::string& out, unsigned int cp)
+{
+    if (cp <= 0x7F)
+    {
+        out += (char)cp;
+    }
+    else if (cp <= 0x7FF)
+    {
+        out += (char)(0xC0 | (cp >> 6));
+        out += (char)(0x80 | (cp & 0x3F));
+    }
+    else if (cp <= 0xFFFF)
+    {
+        out += (char)(0xE0 | (cp >> 12));
+        out += (char)(0x80 | ((cp >> 6) & 0x3F));
+        out += (char)(0x80 | (cp & 0x3F));
+    }
+    else
+    {
+        out += (char)(0xF0 | (cp >> 18));
+        out += (char)(0x80 | ((cp >> 12) & 0x3F));
+        out += (char)(0x80 | ((cp >> 6) & 0x3F));
+        out += (char)(0x80 | (cp & 0x3F));
+    }
+}
+
+static bool parseHex4(const std::string& s, size_t pos, unsigned int& out)
+{
+    if (pos + 4 > s.size()) return false;
+    unsigned int v = 0;
+    for (int i = 0; i < 4; i++)
+    {
+        char c = s[pos + i];
+        v <<= 4;
+        if (c >= '0' && c <= '9')      v |= (unsigned)(c - '0');
+        else if (c >= 'a' && c <= 'f') v |= (unsigned)(c - 'a' + 10);
+        else if (c >= 'A' && c <= 'F') v |= (unsigned)(c - 'A' + 10);
+        else return false;
+    }
+    out = v;
+    return true;
+}
+
+// Extract a string value for a given key from a simple JSON object.
+// Handles backslash escapes, including \uXXXX (and surrogate pairs), so that
+// clients which emit ASCII-safe JSON - Python's json.dumps does this by
+// default, turning "ä" into "ä" - are decoded correctly rather than
+// silently producing a corrupted letter string.
 std::string jsonGetString(const std::string& json, const std::string& key)
 {
     std::string search = "\"" + key + "\"";
     size_t pos = json.find(search);
     if (pos == std::string::npos) return "";
 
-    pos = json.find(':', pos);
+    pos = json.find(':', pos + search.size());
     if (pos == std::string::npos) return "";
 
     pos = json.find('"', pos + 1);
     if (pos == std::string::npos) return "";
+    pos++; // first character of the value
 
-    size_t end = json.find('"', pos + 1);
-    if (end == std::string::npos) return "";
+    std::string out;
+    while (pos < json.size())
+    {
+        char c = json[pos];
 
-    return json.substr(pos + 1, end - pos - 1);
+        if (c == '"') break;          // end of string
+
+        if (c != '\\')
+        {
+            out += c;
+            pos++;
+            continue;
+        }
+
+        if (pos + 1 >= json.size()) break;
+        char esc = json[pos + 1];
+        pos += 2;
+
+        switch (esc)
+        {
+            case '"':  out += '"';  break;
+            case '\\': out += '\\'; break;
+            case '/':  out += '/';  break;
+            case 'b':  out += '\b'; break;
+            case 'f':  out += '\f'; break;
+            case 'n':  out += '\n'; break;
+            case 'r':  out += '\r'; break;
+            case 't':  out += '\t'; break;
+            case 'u':
+            {
+                unsigned int cp = 0;
+                if (!parseHex4(json, pos, cp)) return out;
+                pos += 4;
+
+                // High surrogate: pull in the matching low surrogate.
+                if (cp >= 0xD800 && cp <= 0xDBFF &&
+                    pos + 1 < json.size() && json[pos] == '\\' && json[pos + 1] == 'u')
+                {
+                    unsigned int low = 0;
+                    if (parseHex4(json, pos + 2, low) && low >= 0xDC00 && low <= 0xDFFF)
+                    {
+                        cp = 0x10000 + ((cp - 0xD800) << 10) + (low - 0xDC00);
+                        pos += 6;
+                    }
+                }
+
+                appendUtf8(out, cp);
+                break;
+            }
+            default:
+                out += esc;
+                break;
+        }
+    }
+
+    return out;
 }
 
 // Convert grid to JSON array of arrays
