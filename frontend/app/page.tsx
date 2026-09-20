@@ -339,7 +339,12 @@ export default function Home() {
       // If count matches, go to detection view (auto-solve triggered there)
       setStep("detection");
     } catch (e) {
-      setDetectionError(e instanceof Error ? e.message : "Detection error");
+      const raw = e instanceof Error ? e.message : "Detection error";
+      setDetectionError(
+        /failed to fetch|networkerror|load failed/i.test(raw)
+          ? `Could not reach the detection server at ${DETECTION_SERVER}. Is it running?`
+          : raw
+      );
     } finally {
       setDetecting(false);
     }
@@ -368,7 +373,14 @@ export default function Home() {
       setSolution(data);
       setStep("solved");
     } catch (e) {
-      setSolveError(e instanceof Error ? e.message : "Solve error");
+      // A dead backend surfaces as a bare "Failed to fetch", which tells a
+      // first-time user nothing. Name the likely cause instead.
+      const raw = e instanceof Error ? e.message : "Solve error";
+      setSolveError(
+        /failed to fetch|networkerror|load failed/i.test(raw)
+          ? `Could not reach the solver at ${SOLVER_SERVER}. Is it running?`
+          : raw
+      );
     } finally {
       setSolving(false);
     }
@@ -502,8 +514,7 @@ export default function Home() {
 
           <button
             onClick={startNewGame}
-            className="rounded-lg px-8 py-3 text-lg font-bold text-black transition-all cursor-pointer hover:opacity-90"
-            style={{ background: "var(--accent)" }}
+            className="btn-primary rounded-lg px-8 py-3 text-lg font-bold transition-all"
           >
             Start game – {customCount || tileCount} tiles
           </button>
@@ -550,8 +561,7 @@ export default function Home() {
             <div className="flex flex-col gap-3 w-full">
               <button
                 onClick={startCamera}
-                className="w-full rounded-lg px-6 py-4 text-lg font-bold text-black transition-all cursor-pointer hover:opacity-90"
-                style={{ background: "var(--accent)" }}
+                className="btn-primary w-full rounded-lg px-6 py-4 text-lg font-bold transition-all"
               >
                 📷 Open camera
               </button>
@@ -612,12 +622,7 @@ export default function Home() {
                   <button
                     onClick={handleManualSolve}
                     disabled={manualInput.length < 2}
-                    className="rounded-lg px-6 py-3 font-bold transition-all cursor-pointer hover:opacity-90 disabled:cursor-not-allowed disabled:hover:opacity-100"
-                    style={
-                      manualInput.length >= 2
-                        ? { background: "var(--accent)", color: "#000", border: "2px solid var(--accent)" }
-                        : { background: "var(--input-bg)", color: "var(--foreground)", border: "2px solid var(--input-border)", opacity: 0.7 }
-                    }
+                    className="btn-primary rounded-lg px-6 py-3 font-bold transition-all"
                   >
                     Solve
                   </button>
@@ -636,19 +641,13 @@ export default function Home() {
             <div className="flex gap-3 w-full">
               <button
                 onClick={retakePhoto}
-                className="flex-1 rounded-lg px-4 py-3 font-bold cursor-pointer transition-all"
-                style={{
-                  background: "var(--input-bg)",
-                  border: "2px solid var(--input-border)",
-                  color: "var(--foreground)",
-                }}
+                className="btn-secondary flex-1 rounded-lg px-4 py-3 font-bold transition-all"
               >
                 Retake
               </button>
               <button
                 onClick={runDetection}
-                className="flex-1 rounded-lg px-4 py-3 font-bold text-black cursor-pointer transition-all hover:opacity-90"
-                style={{ background: "var(--accent)" }}
+                className="btn-primary flex-1 rounded-lg px-4 py-3 font-bold transition-all"
               >
                 Detect tiles
               </button>
@@ -658,15 +657,25 @@ export default function Home() {
           {/* Detecting spinner */}
           {detecting && (
             <div className="flex flex-col items-center gap-3 mt-4">
-              <div className="h-10 w-10 animate-spin rounded-full border-4 border-gray-600 border-t-amber-400" />
+              <div className="h-10 w-10 animate-spin rounded-full border-4 divider border-t-[var(--accent)]" />
               <p className="text-sm opacity-60">Detecting letters...</p>
             </div>
           )}
 
           {/* Detection error */}
           {detectionError && (
-            <div className="rounded-lg bg-red-900/40 border border-red-700 px-6 py-3 text-red-300 w-full text-center">
+            <div className="alert-danger rounded-lg px-6 py-3 w-full text-center">
               {detectionError}
+            </div>
+          )}
+
+          {/* Solve error. The manual-input Solve lives on this step, so its
+              failures have to surface here; previously solveError was only
+              rendered on the detection step and a failed solve from here was
+              silent. */}
+          {solveError && (
+            <div className="alert-danger rounded-lg px-6 py-3 w-full text-center">
+              {solveError}
             </div>
           )}
 
@@ -693,8 +702,7 @@ export default function Home() {
           {/* Timing breakdown */}
           {detection.timing && (
             <div
-              className="w-full rounded-lg px-4 py-3 cursor-pointer transition-opacity hover:opacity-80"
-              style={{ background: "var(--input-bg)", border: "2px solid var(--input-border)" }}
+              className="panel w-full rounded-lg px-4 py-3 cursor-pointer transition-opacity hover:opacity-80"
               onClick={() => setShowDetectionStats(!showDetectionStats)}
             >
               <div className="flex justify-between items-center">
@@ -706,7 +714,7 @@ export default function Home() {
 
               {/* Expanded stats */}
               {showDetectionStats && (
-                <div className="mt-2.5 pt-2.5 border-t border-gray-700 space-y-1">
+                <div className="divider mt-2.5 pt-2.5 border-t space-y-1">
                   <div className="text-xs font-semibold opacity-70 mb-1.5">Pipeline</div>
                   <div className="flex justify-between text-xs opacity-60 font-mono">
                     <span>Preprocess</span>
@@ -723,7 +731,7 @@ export default function Home() {
                   
                   {detection.yolo_timing && (
                     <>
-                      <div className="mt-2 pt-2 border-t border-gray-700/50"></div>
+                      <div className="divider mt-2 pt-2 border-t"></div>
                       <div className="text-xs font-semibold opacity-70 mb-1">YOLO Internal</div>
                       <div className="flex justify-between text-xs opacity-60 font-mono">
                         <span>Preprocess</span>
@@ -742,7 +750,7 @@ export default function Home() {
                   
                   {detection.thresholds && (
                     <>
-                      <div className="mt-2 pt-2 border-t border-gray-700/50"></div>
+                      <div className="divider mt-2 pt-2 border-t"></div>
                       <div className="text-xs font-semibold opacity-70 mb-1">Config</div>
                       <div className="flex justify-between text-xs opacity-60 font-mono">
                         <span>NMS threshold</span>
@@ -757,7 +765,7 @@ export default function Home() {
                   
                   {detection.avg_confidence != null && (
                     <>
-                      <div className="mt-2 pt-2 border-t border-gray-700/50"></div>
+                      <div className="divider mt-2 pt-2 border-t"></div>
                       <div className="flex justify-between text-xs opacity-60 font-mono">
                         <span>Avg confidence</span>
                         <span>{detection.avg_confidence}%</span>
@@ -771,15 +779,14 @@ export default function Home() {
 
           {/* Detection summary */}
           <div
-            className="w-full rounded-lg p-4"
-            style={{ background: "var(--input-bg)", border: "2px solid var(--input-border)" }}
+            className="panel w-full rounded-lg p-4"
           >
             <div className="flex justify-between items-center mb-2">
               <span className="text-sm opacity-60">Detected</span>
               <span
                 className="font-bold text-lg"
                 style={{
-                  color: detection.count === tileCount ? "#4ade80" : "#f87171",
+                  color: detection.count === tileCount ? "var(--success)" : "var(--danger)",
                 }}
               >
                 {detection.count} / {tileCount}
@@ -798,7 +805,7 @@ export default function Home() {
 
           {/* Mismatch warning */}
           {detection.count !== tileCount && (
-            <div className="w-full rounded-lg bg-amber-900/40 border border-amber-600 px-4 py-3 text-amber-300">
+            <div className="alert-warn w-full rounded-lg px-4 py-3">
               <p className="font-medium mb-2">
                 ⚠️ Detected {detection.count} tiles, but expected {tileCount}.
               </p>
@@ -829,12 +836,7 @@ export default function Home() {
                 <button
                   onClick={handleCorrectionSubmit}
                   disabled={correctedLetters.length < 2}
-                  className="rounded-lg px-5 py-2 font-bold cursor-pointer transition-all hover:opacity-90 disabled:cursor-not-allowed disabled:hover:opacity-100"
-                  style={
-                    correctedLetters.length >= 2
-                      ? { background: "var(--accent)", color: "#000", border: "2px solid var(--accent)" }
-                      : { background: "var(--input-bg)", color: "var(--foreground)", border: "2px solid var(--input-border)", opacity: 0.7 }
-                  }
+                  className="btn-primary rounded-lg px-5 py-2 font-bold transition-all"
                 >
                   Solve
                 </button>
@@ -849,14 +851,14 @@ export default function Home() {
           {/* If count matches, auto-solving */}
           {detection.count === tileCount && solving && (
             <div className="flex flex-col items-center gap-3 mt-2">
-              <div className="h-10 w-10 animate-spin rounded-full border-4 border-gray-600 border-t-amber-400" />
+              <div className="h-10 w-10 animate-spin rounded-full border-4 divider border-t-[var(--accent)]" />
               <p className="text-sm opacity-60">Solving...</p>
             </div>
           )}
 
           {/* Solve error */}
           {solveError && (
-            <div className="rounded-lg bg-red-900/40 border border-red-700 px-6 py-3 text-red-300 w-full text-center">
+            <div className="alert-danger rounded-lg px-6 py-3 w-full text-center">
               {solveError}
             </div>
           )}
@@ -868,20 +870,14 @@ export default function Home() {
                 setStep("capture");
                 retakePhoto();
               }}
-              className="flex-1 rounded-lg px-4 py-3 font-bold cursor-pointer transition-all"
-              style={{
-                background: "var(--input-bg)",
-                border: "2px solid var(--input-border)",
-                color: "var(--foreground)",
-              }}
+              className="btn-secondary flex-1 rounded-lg px-4 py-3 font-bold transition-all"
             >
               Take a new photo
             </button>
             {detection.count === tileCount && !solving && (
               <button
                 onClick={() => solvePuzzle(detection.letters)}
-                className="flex-1 rounded-lg px-4 py-3 font-bold text-black cursor-pointer transition-all hover:opacity-90"
-                style={{ background: "var(--accent)" }}
+                className="btn-primary flex-1 rounded-lg px-4 py-3 font-bold transition-all"
               >
                 Solve
               </button>
@@ -903,7 +899,7 @@ export default function Home() {
           {solution.solved ? (
             <>
               <div className="flex flex-col items-center gap-1">
-                <h2 className="text-xl font-semibold" style={{ color: "#4ade80" }}>
+                <h2 className="text-xl font-semibold" style={{ color: "var(--success)" }}>
                   Solution found!
                 </h2>
                 <p className="text-sm opacity-60">
@@ -934,8 +930,7 @@ export default function Home() {
               {/* Words the solver placed */}
               {(solutionWords.across.length > 0 || solutionWords.down.length > 0) && (
                 <div
-                  className="w-full rounded-lg px-4 py-3"
-                  style={{ background: "var(--input-bg)", border: "2px solid var(--input-border)" }}
+                  className="panel w-full rounded-lg px-4 py-3"
                 >
                   <div className="flex flex-col gap-2.5">
                     {([
@@ -950,8 +945,7 @@ export default function Home() {
                           {list.map((w, i) => (
                             <span
                               key={`${w}-${i}`}
-                              className="rounded px-2 py-0.5 text-sm font-mono tracking-wide"
-                              style={{ background: "#1f2b4d", color: "var(--foreground)" }}
+                              className="chip rounded px-2 py-0.5 text-sm font-mono tracking-wide"
                             >
                               {w}
                             </span>
@@ -966,7 +960,7 @@ export default function Home() {
           ) : (
             <>
               <div className="flex flex-col items-center gap-1">
-                <h2 className="text-xl font-semibold" style={{ color: "#f87171" }}>
+                <h2 className="text-xl font-semibold" style={{ color: "var(--danger)" }}>
                   No solution found
                 </h2>
                 <p className="text-sm opacity-60 text-center max-w-sm">
@@ -978,8 +972,7 @@ export default function Home() {
 
               {lastLetters && (
                 <div
-                  className="w-full rounded-lg px-4 py-3 text-center"
-                  style={{ background: "var(--input-bg)", border: "2px solid var(--input-border)" }}
+                  className="panel w-full rounded-lg px-4 py-3 text-center"
                 >
                   <div className="text-xs uppercase tracking-wide opacity-50 mb-1.5">
                     Letters tried
@@ -997,20 +990,14 @@ export default function Home() {
             {!solution.solved && lastLetters && (
               <button
                 onClick={editLetters}
-                className="flex-1 rounded-lg px-4 py-3 font-bold cursor-pointer transition-all"
-                style={{
-                  background: "var(--input-bg)",
-                  border: "2px solid var(--input-border)",
-                  color: "var(--foreground)",
-                }}
+                className="btn-secondary flex-1 rounded-lg px-4 py-3 font-bold transition-all"
               >
                 Edit letters
               </button>
             )}
             <button
               onClick={resetGame}
-              className="flex-1 rounded-lg px-4 py-3 font-bold text-black cursor-pointer transition-all hover:opacity-90"
-              style={{ background: "var(--accent)" }}
+              className="btn-primary flex-1 rounded-lg px-4 py-3 font-bold transition-all"
             >
               New game
             </button>
@@ -1021,7 +1008,7 @@ export default function Home() {
       {/* ── Solving overlay ── */}
       {solving && step !== "detection" && (
         <div className="mt-8 flex flex-col items-center gap-3">
-          <div className="h-10 w-10 animate-spin rounded-full border-4 border-gray-600 border-t-amber-400" />
+          <div className="h-10 w-10 animate-spin rounded-full border-4 divider border-t-[var(--accent)]" />
           <p className="text-sm opacity-60">Solving...</p>
         </div>
       )}

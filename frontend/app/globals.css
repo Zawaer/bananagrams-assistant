@@ -1,15 +1,41 @@
 @import "tailwindcss";
 
 :root {
+  /* Page and text */
   --background: #1a1a2e;
   --foreground: #e0e0e0;
+
+  /* Raised surfaces. The panel colour used to sit at 1.07:1 against the page,
+     so panels were held up entirely by their border and the layout flattened
+     into one mass. These now read as distinct surfaces: panel 1.31:1 over the
+     page, chip 1.30:1 over the panel, border 1.47:1 over the panel. */
+  --input-bg: #252f52;
+  --input-border: #3a4680;
+  --chip-bg: #33406d;
+
+  /* Tiles */
   --tile-bg: #f5deb3;
   --tile-border: #d2b48c;
   --tile-text: #2c1810;
+
+  /* Brand. Hover brightens rather than dims, which reads better on dark. */
   --accent: #e6a817;
-  --accent-hover: #d4971a;
-  --input-bg: #16213e;
-  --input-border: #0f3460;
+  --accent-hover: #f0b736;
+
+  /* Status. Hues picked to sit with the amber (42) and wheat (39) instead of
+     against them: the success green is a yellow-green at hue 106 rather than
+     the stock 142, and the danger red leans terracotta at hue 12 rather than
+     a pure 0. Both still clear AA on the page. */
+  --success: #8fd67a;
+  --danger: #ef8266;
+
+  --warn-bg: #3d2f12;
+  --warn-border: #8a6a1f;
+  --warn-text: #f0c26a;
+
+  --danger-bg: #40211c;
+  --danger-border: #8f4033;
+  --danger-text: #f59b83;
 }
 
 @theme inline {
@@ -23,6 +49,67 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+/* ── Components ─────────────────────────────────────────────────────────── */
+
+.btn-primary {
+  background: var(--accent);
+  color: #000;
+  border: 2px solid var(--accent);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+.btn-primary:disabled {
+  background: var(--input-bg);
+  color: var(--foreground);
+  border-color: var(--input-border);
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  background: var(--input-bg);
+  color: var(--foreground);
+  border: 2px solid var(--input-border);
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+
+.btn-secondary:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.panel {
+  background: var(--input-bg);
+  border: 2px solid var(--input-border);
+}
+
+.chip {
+  background: var(--chip-bg);
+  color: var(--foreground);
+}
+
+.alert-warn {
+  background: var(--warn-bg);
+  border: 1px solid var(--warn-border);
+  color: var(--warn-text);
+}
+
+.alert-danger {
+  background: var(--danger-bg);
+  border: 1px solid var(--danger-border);
+  color: var(--danger-text);
+}
+
+.divider {
+  border-color: var(--input-border);
 }
 
 .tile {
