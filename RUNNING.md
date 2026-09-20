@@ -1,4 +1,4 @@
-Quick run notes — Docker Compose (v2) and manual runs
+Quick run notes: Docker Compose (v2) and manual runs
 
 Docker (recommended, homelab)
 
@@ -48,7 +48,7 @@ Solver service (C++)
 ```bash
 cd backend/solver
 # simple compile
-g++ -std=c++17 -pthread main.cpp -o solver-server
+g++ -std=c++17 -O2 -pthread main.cpp -o solver-server
 # run with bundled wordlist
 ./solver-server ../wordlist-parser/wordlist.txt
 ```
@@ -61,6 +61,7 @@ yarn install   # or `npm install`
 yarn dev       # runs on http://localhost:3000
 ```
 
-If you want, I can also:
-- Add the frontend to `docker compose` (create a `Dockerfile` for `frontend`).
-- Add a small `Makefile` to simplify `up`/`down` commands.
+Possible next steps
+
+- Add the frontend to `docker compose` (needs a `Dockerfile` for `frontend`).
+- Add a small `Makefile` to simplify `up`/`down`.
