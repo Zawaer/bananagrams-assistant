@@ -29,21 +29,44 @@ inline std::wstring sort(std::wstring str) {
     return str;
 }
 
+// Case conversion is done explicitly rather than through std::locale. The
+// tile set is a known 22 letters, and relying on the ambient locale meant the
+// Finnish ä and ö were left untouched wherever one was not configured: the
+// Docker image ships no UTF-8 locale, so solved grids came back with a
+// lowercase "ä" sitting among uppercase letters.
+inline wchar_t toLowerChar(wchar_t c)
+{
+    if (c >= L'A' && c <= L'Z') return (wchar_t)(c - L'A' + L'a');
+    switch (c)
+    {
+        case L'Ä': return L'ä';
+        case L'Ö': return L'ö';
+        case L'Å': return L'å';
+        default:   return c;
+    }
+}
+
+inline wchar_t toUpperChar(wchar_t c)
+{
+    if (c >= L'a' && c <= L'z') return (wchar_t)(c - L'a' + L'A');
+    switch (c)
+    {
+        case L'ä': return L'Ä';
+        case L'ö': return L'Ö';
+        case L'å': return L'Å';
+        default:   return c;
+    }
+}
+
 inline std::wstring toLower(std::wstring str)
 {
-    for (wchar_t& c : str)
-    {
-        c = std::tolower(c, std::locale());
-    }
+    for (wchar_t& c : str) c = toLowerChar(c);
     return str;
 }
 
 inline std::wstring toUpper(std::wstring str)
 {
-    for (wchar_t& c : str)
-    {
-        c = std::toupper(c, std::locale());
-    }
+    for (wchar_t& c : str) c = toUpperChar(c);
     return str;
 }
 
