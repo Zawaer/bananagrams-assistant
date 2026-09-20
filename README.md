@@ -1,6 +1,6 @@
 # Bananagrams Assistant
 
-**Point a camera at a pile of scattered Bananagrams tiles and get back a complete, valid crossword grid — in under two seconds.**
+**Point a camera at a pile of scattered Bananagrams tiles and get back a complete, valid crossword grid, in under two seconds.**
 
 A full-stack computer vision + search project: a YOLO11x segmentation model reads the letters off physical tiles, and a from-scratch C++ backtracking solver arranges every one of them into a connected crossword of valid Finnish words.
 
@@ -20,11 +20,11 @@ Three independent services, each doing one job:
 
 | | |
 |---|---|
-| **1. See** | A YOLO11x-seg model (fine-tuned on 70 hand-labelled photos) finds every tile in the frame and classifies its letter — including the Finnish `ä` and `ö`. |
+| **1. See** | A YOLO11x-seg model (fine-tuned on 70 hand-labelled photos) finds every tile in the frame and classifies its letter, including the Finnish `ä` and `ö`. |
 | **2. Check** | Detected tile count is compared against the expected hand size. Mismatches are surfaced for manual correction rather than silently guessed at. |
 | **3. Solve** | A C++17 backtracking solver packs all the letters into a single connected crossword in which every horizontal and vertical run is a real dictionary word. |
 
-### Step 1 — Seeing the tiles
+### Step 1: Seeing the tiles
 
 Raw photo in, per-tile instance masks and letter classes out. Tiles overlap, sit at arbitrary rotations, and are photographed under uncontrolled lighting:
 
@@ -32,23 +32,23 @@ Raw photo in, per-tile instance masks and letter classes out. Tiles overlap, sit
   <img src="docs/detection-before-after.jpg" width="820" alt="Left: raw photo of 21 scattered tiles. Right: the same photo with per-tile segmentation masks and predicted letters with confidence scores." />
 </p>
 
-Note the model reading tiles that are rotated to arbitrary angles, upside-down, and butted directly against each other — and correctly separating `A` from `Ä` (bottom right).
+Note the model reading tiles that are rotated to arbitrary angles, upside-down, and butted directly against each other, and correctly separating `A` from `Ä` (bottom right).
 
-### Step 2 — Solving the grid
+### Step 2: Solving the grid
 
 The 21 detected letters `J K O T S I L O I I I I I Ä I S S U E S A` become:
 
 ```
-      S
-  I   I
-  S   I
+            S
+    I       I
+    S       I
 O I K E U S L A I T O S
-  I   I
-  J
-  Ä
+    I       I
+    J
+    Ä
 ```
 
-`OIKEUSLAITOS` × `ISKIJÄ` × `SIILI` — 21 tiles, zero left over, every horizontal and vertical run a valid Finnish word. Found in **4 ms**.
+`OIKEUSLAITOS` × `ISKIJÄ` × `SIILI`: 21 tiles, zero left over, every horizontal and vertical run a valid Finnish word. Found in **4 ms**.
 
 ---
 
@@ -90,15 +90,15 @@ The dataset is 100 hand-labelled photos split 70 / 20 / 10. The model was fine-t
 | **test** (never seen during training) | 10 | 243 | 0.991 | 1.000 | 0.995 | 0.990 | 0.921 |
 | valid (used for validation) | 20 | 471 | 0.995 | 0.997 | 0.995 | 0.993 | 0.936 |
 
-The **test** row is the honest number: 243 tile instances the model had no contact with during training, and it found every one of them — recall 1.000 at 0.991 mean precision across the 22 classes. The valid row is listed for completeness but is not an unbiased estimate, since training used it for validation.
+The **test** row is the honest number: 243 tile instances the model had no contact with during training, and it found every one of them, at recall 1.000 and 0.991 mean precision across the 22 classes. The valid row is listed for completeness but is not an unbiased estimate, since training used it for validation.
 
-Caveat worth stating plainly: 10 images is a small test set, and all of it comes from the same tile set and shooting conditions. These numbers say the model has comfortably learned *these* tiles — not that it would generalise to a different Bananagrams set on a different table.
+Caveat worth stating plainly: 10 images is a small test set, and all of it comes from the same tile set and shooting conditions. These numbers say the model has comfortably learned *these* tiles, not that it would generalise to a different Bananagrams set on a different table.
 
-In live use the server additionally discards anything under a 0.8 confidence threshold, which is why real runs report ~96–97% mean confidence.
+In live use the server additionally discards anything under a 0.8 confidence threshold, which is why real runs report ~96-97% mean confidence.
 
 ### Solver success rate
 
-Measured in-process — no HTTP in the loop — over 200 randomly generated hands per size, letters drawn independently in proportion to their frequency in the Finnish wordlist. **Every grid the solver returns is machine-checked**: it must use exactly the dealt tiles, form a single connected component, and every horizontal and vertical run of 2+ letters must be in the dictionary.
+Measured in-process, with no HTTP in the loop, over 200 randomly generated hands per size, letters drawn independently in proportion to their frequency in the Finnish wordlist. **Every grid the solver returns is machine-checked**: it must use exactly the dealt tiles, form a single connected component, and every horizontal and vertical run of 2+ letters must be in the dictionary.
 
 | Hand | Solved | Median | p95 | Slowest |
 |---|---|---|---|---|
@@ -106,9 +106,9 @@ Measured in-process — no HTTP in the loop — over 200 randomly generated hand
 | 15 tiles | **193/200 (96.5%)** | <1 ms | 7 ms | 1.2 s |
 | 21 tiles | **197/200 (98.5%)** | <1 ms | 31 ms | 1.3 s |
 
-All 600 grids passed validation — no invalid words, no stray tiles, no disconnected boards.
+All 600 grids passed validation: no invalid words, no stray tiles, no disconnected boards.
 
-The hands it doesn't solve hit the search budget rather than proving anything, and they are extreme draws: the three misses at 21 tiles had only 4–5 vowels between them. A real tile bag produces those far less often than independent sampling does.
+The hands it doesn't solve hit the search budget rather than proving anything, and they are extreme draws: the three misses at 21 tiles had only 4 or 5 vowels between them. A real tile bag produces those far less often than independent sampling does.
 
 ### Latency
 
@@ -131,7 +131,7 @@ The solver is now a rounding error. Reading the physical world is the entire cos
 
 ## The scale of the problem
 
-To understand why the solver has to prune rather than enumerate, consider how many grids exist — even ignoring the dictionary entirely.
+To understand why the solver has to prune rather than enumerate, consider how many grids exist, even ignoring the dictionary entirely.
 
 **Step 1: Board shapes (fixed polyominoes).** Any connected layout of 21 squares on a grid is a fixed polyomino. Per [OEIS A001168](https://oeis.org/A001168) there are exactly **22,964,779,660** of them for 21 squares. "Fixed" because rotating a layout 90° creates a new reading path, so orientation matters.
 
@@ -143,7 +143,7 @@ $$21! = 51{,}090{,}942{,}171{,}709{,}440{,}000$$
 
 $$22{,}964{,}779{,}660 \times 51{,}090{,}942{,}171{,}709{,}440{,}000 = 1{,}173{,}292{,}229{,}595{,}109{,}175{,}141{,}990{,}400{,}000$$
 
-Roughly **1.17 nonillion** layouts. The space where every run is also a valid dictionary word is a vanishing sliver of that — which is the whole argument for depth-first search with early pruning instead of generate-and-test.
+Roughly **1.17 nonillion** layouts. The space where every run is also a valid dictionary word is a vanishing sliver of that, which is the whole argument for depth-first search with early pruning instead of generate-and-test.
 
 ### How the solver actually works
 
@@ -153,7 +153,7 @@ Roughly **1.17 nonillion** layouts. The space where every run is also a valid di
 4. A placement is legal only if the cells before and after it are empty (so the run it forms is exactly that word) and **every perpendicular run it creates is itself a dictionary word**. Tiles are then deducted based on the cells actually written, so a word crossing two existing letters is accounted for correctly.
 5. Succeed when the hand is empty. On a dead end, undo the grid writes, the spent tiles and the used-word marker, and try the next candidate.
 
-Step 4 is what lets the board get dense: a placement is judged by the words it creates, not by whether it happens to touch something. Step 5 is what makes the recursion real — every branch is fully reversible, so the search can commit to a candidate and still get back if it leads nowhere.
+Step 4 is what lets the board get dense: a placement is judged by the words it creates, not by whether it happens to touch something. Step 5 is what makes the recursion real: every branch is fully reversible, so the search can commit to a candidate and still get back if it leads nowhere.
 
 The search is bounded by a node and wall-clock budget (300,000 nodes / 5 s by default, both tunable on `Board`). A `solved: false` therefore means "no packing found within budget", which is not the same as proving the hand impossible.
 
@@ -197,10 +197,10 @@ The search is bounded by a node and wall-clock budget (300,000 nodes / 5 s by de
 | Service | Stack | Notes |
 |---|---|---|
 | Frontend | Next.js 16, React 19, TypeScript, Tailwind 4 | Camera capture, file upload, manual letter entry, grid rendering |
-| Solver | C++17 | Backtracking search plus an HTTP server written directly on POSIX sockets — no framework, no JSON library, no dependencies |
+| Solver | C++17 | Backtracking search plus an HTTP server written directly on POSIX sockets, with no framework, no JSON library and no dependencies |
 | Segmentation | Python, Flask, ONNX Runtime | YOLO11x-seg via Ultralytics, `supervision` for NMS and annotation |
 
-The C++ service implements its own HTTP parsing and JSON serialisation against raw sockets. That was the point of the exercise — it builds and runs with nothing but a compiler.
+The C++ service implements its own HTTP parsing and JSON serialisation against raw sockets. That was the point of the exercise: it builds and runs with nothing but a compiler.
 
 ---
 
@@ -256,18 +256,18 @@ The compose file mounts the ONNX model from `image-segmentation/models/`. Altern
 ### Manual
 
 ```bash
-# Terminal 1 — C++ solver
+# Terminal 1: C++ solver
 cd backend/solver
 g++ -std=c++17 -O2 -pthread main.cpp -o solver-server
 ./solver-server ../wordlist-parser/wordlist.txt
 
-# Terminal 2 — segmentation server
+# Terminal 2: segmentation server
 cd backend/segmentation
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 python3 segmentation-server.py
 
-# Terminal 3 — frontend
+# Terminal 3: frontend
 cd frontend
 yarn install && yarn dev
 ```
@@ -278,7 +278,7 @@ Then open `http://localhost:3000`. See [RUNNING.md](RUNNING.md) for more detail 
 
 ## API
 
-### Solver — port 8080
+### Solver (port 8080)
 
 `GET /health` → `{"status": "ok"}`
 
@@ -292,19 +292,27 @@ Then open `http://localhost:3000`. See [RUNNING.md](RUNNING.md) for more detail 
 {
   "solved": true,
   "time_ms": 4,
-  "grid": [[null, null, null, null, null, null, "S", ...], ["O", "I", "K", "E", "U", "S", "L", ...], ...]
+  "grid": [
+    [null, null, null, null, null, null, "S",  null, null, null, null, null],
+    [null, null, "I",  null, null, null, "I",  null, null, null, null, null],
+    [null, null, "S",  null, null, null, "I",  null, null, null, null, null],
+    ["O",  "I",  "K",  "E",  "U",  "S",  "L",  "A",  "I",  "T",  "O",  "S"],
+    [null, null, "I",  null, null, null, "I",  null, null, null, null, null],
+    [null, null, "J",  null, null, null, null, null, null, null, null, null],
+    [null, null, "Ä",  null, null, null, null, null, null, null, null, null]
+  ]
 }
 ```
 
 `solved: false` comes back with an empty grid when no packing is found within the search budget.
 
-The request body may use raw UTF-8 or `\uXXXX` escapes for `ä` and `ö` — both decode correctly, so clients like Python's `json.dumps` (which escapes non-ASCII by default) work as well as the browser's `JSON.stringify`.
+The request body may use raw UTF-8 or `\uXXXX` escapes for `ä` and `ö`. Both decode correctly, so clients like Python's `json.dumps` (which escapes non-ASCII by default) work as well as the browser's `JSON.stringify`.
 
-### Segmentation — port 8081
+### Segmentation (port 8081)
 
 `GET /health` → `{"status": "ok"}`
 
-`POST /detect` — `multipart/form-data` with an `image` field
+`POST /detect` with `multipart/form-data` and an `image` field
 
 ```jsonc
 {
@@ -336,6 +344,6 @@ The request body may use raw UTF-8 or `\uXXXX` escapes for `ä` and `ö` — bot
 
 ## Notes
 
-- The tile set is Finnish, so the alphabet is 22 letters — `c`, `f`, `q`, `w`, `x`, `z` and `å` never appear on a tile.
+- The tile set is Finnish, so the alphabet is 22 letters: `c`, `f`, `q`, `w`, `x`, `z` and `å` never appear on a tile.
 - Camera capture requires HTTPS or `localhost`; the upload path works anywhere.
 - Both backends report timing breakdowns on every request, which is how the numbers above were measured.
