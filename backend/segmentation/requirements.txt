@@ -3,10 +3,13 @@ flask-cors==4.0.0
 gunicorn==21.2.0
 onnx==1.20.1
 onnxruntime==1.24.1
-# Use CPU-only PyTorch to reduce image size
+# Prefer CPU-only PyTorch builds to keep the image small.
+# Note: no "+cpu" local version here. Those wheels only exist for x86_64, so
+# pinning torch==2.1.0+cpu made this file uninstallable on arm64 (Apple
+# Silicon, Raspberry Pi). These versions resolve on both architectures.
 --extra-index-url https://download.pytorch.org/whl/cpu
-torch==2.1.0+cpu
-torchvision==0.16.0+cpu
+torch==2.12.0
+torchvision==0.27.0
 ultralytics==8.3.0
 opencv-python-headless==4.10.0.84
 numpy==1.26.4

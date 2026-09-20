@@ -19,11 +19,18 @@ WORKDIR /app
 # Copy and install Python dependencies
 COPY backend/segmentation/requirements.txt ./
 
-# Install with minimal dependencies and clean up pip cache
-RUN pip install --no-cache-dir -r requirements.txt && \
-    rm -rf /root/.cache/pip && \
-    find /usr/local/lib/python3.11 -type d -name "tests" -exec rm -rf {} + 2>/dev/null || true && \
-    find /usr/local/lib/python3.11 -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+# Install dependencies. Kept as its own step so a failed install fails the
+# build: when this was chained into the cleanup below with a trailing
+# "|| true", a broken install still produced an image that looked fine and
+# then died at startup with "gunicorn: not found".
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Trim test suites and bytecode caches. Failure here is harmless, so it is
+# allowed to pass, but it can no longer mask a failed install.
+RUN rm -rf /root/.cache/pip; \
+    find /usr/local/lib/python3.11 -depth -type d -name "tests" -exec rm -rf {} + 2>/dev/null; \
+    find /usr/local/lib/python3.11 -depth -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null; \
+    true
 
 # Copy application code
 COPY backend/segmentation/segmentation-server.py ./
