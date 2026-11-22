@@ -169,6 +169,19 @@ def health():
     return jsonify({"status": "ok"})
 
 
+@app.route("/warm", methods=["POST"])
+def warm():
+    """Start loading the model in the background, so it is ready by the time
+    the photo arrives. The app calls this when it opens."""
+    global _last_used
+    with _model_lock:
+        loaded = _model is not None
+        _last_used = time.monotonic()
+    if not loaded:
+        threading.Thread(target=get_model, daemon=True).start()
+    return jsonify({"loaded": loaded})
+
+
 @app.route("/detect", methods=["POST"])
 def detect():
     """

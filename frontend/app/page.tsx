@@ -1,1017 +1,870 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { detect, solve, warmDetector, type SolveResult } from "./lib/api";
+import { extractWords, formatMs } from "./lib/grid";
+import { awkwardness, removeOne, sortLetters } from "./lib/letters";
+import { LetterPad } from "./components/LetterPad";
+import { Sheet } from "./components/Sheet";
+import { SolutionBoard } from "./components/SolutionBoard";
+import { Tile } from "./components/Tile";
 
 // ============================================================================
-// Types
+// Game model
+//
+// A game is a hand of tiles that changes over time. The only rule that
+// changes it here is the dump: put one unwanted tile back in the pile and take
+// three. So the flow is: read the hand (photo or typed), solve; if it doesn't
+// fit, pick a tile to dump, add the three you drew, solve again.
 // ============================================================================
 
-type GameStep = "setup" | "capture" | "detection" | "correction" | "solved";
+type HandTile = { id: number; letter: string; conf?: number };
 
-type DetectionResult = {
-  letters: string;
-  letter_list: { letter: string; confidence: number }[];
-  annotated_image: string; // base64
-  count: number;
-  timing?: {
-    preprocess_ms: number;
-    inference_ms: number;
-    postprocess_ms: number;
-    total_ms: number;
-  };
-  yolo_timing?: {
-    preprocess_ms: number;
-    inference_ms: number;
-    postprocess_ms: number;
-  };
-  avg_confidence?: number;
-  thresholds?: {
-    nms: number;
-    confidence: number;
-  };
+type Phase = "start" | "scanning" | "hand" | "solving" | "result" | "draw";
+
+type Game = {
+  expected: number | null;
+  hand: HandTile[];
+  photo: string | null;
+  solution: SolveResult | null;
+  /** Letters the solution above was computed for. */
+  solvedFor: string | null;
+  /** Tiles drawn after the latest dump, not yet in the hand. */
+  drawn: string[];
+  dumped: string | null;
+  history: string[];
 };
 
-type SolveResult = {
-  solved: boolean;
-  time_ms: number;
-  grid: (string | null)[][];
+type DumpCheck = {
+  running: boolean;
+  checked: number;
+  total: number;
+  fits: string[];
 };
 
-const TILE_PRESETS = [10, 15, 21];
+const PRESETS = [10, 15, 21];
+const DRAW_COUNT = 3;
+const DOUBTFUL = 0.9;
+const STORAGE_KEY = "bananagrams-game-v2";
 
-// Get server URLs from environment variables or fall back to local development
-const getDetectionServerUrl = () => {
-  // In production, use environment variable
-  if (process.env.NEXT_PUBLIC_DETECTION_SERVER_URL) {
-    return process.env.NEXT_PUBLIC_DETECTION_SERVER_URL;
-  }
-  
-  // In development, use current hostname (works on local network)
-  if (typeof window !== "undefined") {
-    return `http://${window.location.hostname}:8081`;
-  }
-  return `http://localhost:8081`;
-};
+let nextId = 1;
+const toTiles = (letters: string[], conf?: number[]): HandTile[] =>
+  letters.map((letter, i) => ({ id: nextId++, letter, conf: conf?.[i] }));
+const lettersOf = (hand: HandTile[]) => hand.map((t) => t.letter);
+const sortHand = (hand: HandTile[]) =>
+  [...hand].sort((a, b) => a.letter.localeCompare(b.letter, "fi"));
 
-const getSolverServerUrl = () => {
-  // In production, use environment variable
-  if (process.env.NEXT_PUBLIC_SOLVER_SERVER_URL) {
-    return process.env.NEXT_PUBLIC_SOLVER_SERVER_URL;
-  }
-  
-  // In development, use current hostname (works on local network)
-  if (typeof window !== "undefined") {
-    return `http://${window.location.hostname}:8080`;
-  }
-  return `http://localhost:8080`;
-};
-
-const DETECTION_SERVER = getDetectionServerUrl();
-const SOLVER_SERVER = getSolverServerUrl();
-
-const VALID_CHARS = new Set("abdeghijklmnoprstuvyäö".split(""));
-
-// Gap between tiles in the solution grid, in px
-const GRID_GAP = 2;
-// Tiles never render larger than this; they shrink to fit narrow screens
-const MAX_TILE = 40;
-const MIN_TILE = 13;
-
-// The solver routinely finishes inside a millisecond; "0 ms" reads like a bug,
-// so show a sub-millisecond marker instead.
-function formatMs(ms: number) {
-  if (ms < 1) return "<1 ms";
-  if (ms >= 1000) return `${(ms / 1000).toFixed(1)} s`;
-  return `${ms} ms`;
-}
-
-// Pull the horizontal and vertical runs of 2+ letters out of a solved grid -
-// i.e. the words the solver actually placed.
-function extractWords(grid: (string | null)[][]) {
-  const rows = grid.length;
-  const cols = grid.reduce((m, r) => Math.max(m, r.length), 0);
-  const at = (y: number, x: number) => grid[y]?.[x] ?? null;
-
-  const across: string[] = [];
-  for (let y = 0; y < rows; y++) {
-    let run = "";
-    for (let x = 0; x <= cols; x++) {
-      const c = at(y, x);
-      if (c) run += c;
-      else {
-        if (run.length >= 2) across.push(run);
-        run = "";
-      }
-    }
-  }
-
-  const down: string[] = [];
-  for (let x = 0; x < cols; x++) {
-    let run = "";
-    for (let y = 0; y <= rows; y++) {
-      const c = at(y, x);
-      if (c) run += c;
-      else {
-        if (run.length >= 2) down.push(run);
-        run = "";
-      }
-    }
-  }
-
-  return { across, down };
-}
+const emptyGame = (expected: number | null): Game => ({
+  expected,
+  hand: [],
+  photo: null,
+  solution: null,
+  solvedFor: null,
+  drawn: [],
+  dumped: null,
+  history: [],
+});
 
 // ============================================================================
-// Main component
+// Page
 // ============================================================================
 
 export default function Home() {
-  const [step, setStep] = useState<GameStep>("setup");
-  const [tileCount, setTileCount] = useState(21);
-  const [customCount, setCustomCount] = useState("");
+  const [phase, setPhase] = useState<Phase>("start");
+  const [game, setGame] = useState<Game>(() => emptyGame(21));
+  const [restored, setRestored] = useState(false);
 
-  // Capture
-  const [cameraActive, setCameraActive] = useState(false);
-  const [capturedImage, setCapturedImage] = useState<Blob | null>(null);
-  const [capturedPreview, setCapturedPreview] = useState<string | null>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
+  // Scanning
+  const [scanTarget, setScanTarget] = useState<"hand" | "draw">("hand");
+  const [preview, setPreview] = useState<string | null>(null);
+  const [elapsed, setElapsed] = useState(0);
+  const abortRef = useRef<AbortController | null>(null);
+  const cameraInput = useRef<HTMLInputElement>(null);
+  const libraryInput = useRef<HTMLInputElement>(null);
 
-  // Detection
-  const [detecting, setDetecting] = useState(false);
-  const [detection, setDetection] = useState<DetectionResult | null>(null);
-  const [detectionError, setDetectionError] = useState<string | null>(null);
+  // Errors and sheets
+  const [error, setError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<number | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [choosingDump, setChoosingDump] = useState(false);
+  const [showPhoto, setShowPhoto] = useState(false);
+  const [customOpen, setCustomOpen] = useState(false);
 
-  // Correction
-  const [correctedLetters, setCorrectedLetters] = useState("");
+  // Dump helper
+  const [dumpCheck, setDumpCheck] = useState<DumpCheck | null>(null);
+  const dumpAbort = useRef<AbortController | null>(null);
 
-  // Manual input
-  const [manualInput, setManualInput] = useState("");
-
-  // Detection stats
-  const [showDetectionStats, setShowDetectionStats] = useState(false);
-
-  // Solving
-  const [solving, setSolving] = useState(false);
-  const [solution, setSolution] = useState<SolveResult | null>(null);
-  const [solveError, setSolveError] = useState<string | null>(null);
-  const [lastLetters, setLastLetters] = useState("");
-
-  // Solution grid sizing: tiles shrink so the whole board fits the screen
-  // rather than forcing the user to scroll a result sideways.
-  const gridWrapRef = useRef<HTMLDivElement>(null);
-  const [tileSize, setTileSize] = useState(MAX_TILE);
-
-  // ============================================================================
-  // Camera
-  // ============================================================================
-
-  const startCamera = useCallback(async () => {
-    // Check if camera API is available (requires HTTPS or localhost)
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      setDetectionError(
-        "Camera requires HTTPS. Please access this site via https:// or use 'Upload photo' instead."
-      );
-      return;
-    }
-
+  // ── Persistence: a reload or a locked phone shouldn't lose the hand ───────
+  useEffect(() => {
     try {
-      // Try rear camera first
-      let stream: MediaStream;
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } },
-        });
-      } catch {
-        // Fallback to any camera
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { width: { ideal: 1920 }, height: { ideal: 1080 } },
-        });
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        const saved = JSON.parse(raw) as { phase: Phase; game: Game };
+        const hand = toTiles(lettersOf(saved.game.hand), saved.game.hand.map((t) => t.conf ?? 1));
+        setGame({ ...saved.game, hand, photo: null });
+        // Anything in flight when the page went away is restarted by hand.
+        const p = saved.phase === "scanning" || saved.phase === "solving" ? "hand" : saved.phase;
+        setPhase(hand.length || p === "draw" ? p : "start");
       }
-      streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-      }
-      setCameraActive(true);
-    } catch (error) {
-      console.error("Camera error:", error);
-      const message = error instanceof Error ? error.message : "Unable to access camera. Please allow camera permissions.";
-      setDetectionError(message);
+    } catch {
+      // A corrupt save just means a fresh start.
     }
+    setRestored(true);
+    warmDetector();
   }, []);
 
-  const stopCamera = useCallback(() => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((t) => t.stop());
-      streamRef.current = null;
-    }
-    setCameraActive(false);
-  }, []);
+  useEffect(() => {
+    if (!restored) return;
+    const { photo: _photo, ...rest } = game;
+    void _photo;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ phase, game: rest }));
+  }, [phase, game, restored]);
 
-  const capturePhoto = useCallback(() => {
-    if (!videoRef.current) return;
-    const video = videoRef.current;
-    const canvas = document.createElement("canvas");
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    const ctx = canvas.getContext("2d")!;
-    ctx.drawImage(video, 0, 0);
-    canvas.toBlob(
-      (blob) => {
-        if (blob) {
-          setCapturedImage(blob);
-          setCapturedPreview(URL.createObjectURL(blob));
-          stopCamera();
-        }
-      },
-      "image/jpeg",
-      0.9
-    );
-  }, [stopCamera]);
+  // ── Elapsed timer while scanning, to explain a slow first read ───────────
+  useEffect(() => {
+    if (phase !== "scanning") return;
+    setElapsed(0);
+    const started = Date.now();
+    const t = setInterval(() => setElapsed(Math.floor((Date.now() - started) / 1000)), 500);
+    return () => clearInterval(t);
+  }, [phase]);
 
-  const handleFileUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+  const letters = lettersOf(game.hand);
+  const handKey = sortLetters(letters).join("");
+
+  // ==========================================================================
+  // Actions
+  // ==========================================================================
+
+  const newGame = () => {
+    if (game.hand.length && phase !== "start" && !confirm("Start a new game? This hand will be cleared.")) return;
+    abortRef.current?.abort();
+    dumpAbort.current?.abort();
+    setGame(emptyGame(game.expected));
+    setDumpCheck(null);
+    setError(null);
+    setPreview(null);
+    setPhase("start");
+  };
+
+  const pickPhoto = (target: "hand" | "draw", camera: boolean) => {
+    setScanTarget(target);
+    (camera ? cameraInput : libraryInput).current?.click();
+  };
+
+  const onPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      setCapturedImage(file);
-      setCapturedPreview(URL.createObjectURL(file));
+    e.target.value = "";
+    if (!file) return;
+    const returnTo: Phase = scanTarget === "draw" ? "draw" : game.hand.length ? "hand" : "start";
+    setError(null);
+    setPreview(URL.createObjectURL(file));
+    setPhase("scanning");
+    abortRef.current = new AbortController();
+    try {
+      const result = await detect(file, abortRef.current.signal);
+      const read = result.letter_list.map((l) => l.letter);
+      if (scanTarget === "draw") {
+        setGame((g) => ({ ...g, drawn: [...g.drawn, ...read] }));
+        setPhase("draw");
+      } else {
+        setGame((g) => ({
+          ...g,
+          hand: sortHand(toTiles(read, result.letter_list.map((l) => l.confidence))),
+          photo: result.annotated_image,
+          solution: null,
+          solvedFor: null,
+        }));
+        setPhase("hand");
+      }
+      if (!read.length) setError("No tiles found in that photo. Try again with the tiles spread out on a plain surface.");
+    } catch (err) {
+      if (abortRef.current?.signal.aborted) return;
+      setError(err instanceof Error ? err.message : "Couldn't read the photo.");
+      setPhase(returnTo);
+    }
+  };
+
+  const cancelScan = () => {
+    abortRef.current?.abort();
+    setPhase(scanTarget === "draw" ? "draw" : game.hand.length ? "hand" : "start");
+  };
+
+  const typeHand = () => {
+    setError(null);
+    setGame((g) => ({ ...emptyGame(g.expected) }));
+    setPhase("hand");
+    setAdding(true);
+  };
+
+  const runSolve = useCallback(async (hand: string[]) => {
+    setError(null);
+    setPhase("solving");
+    dumpAbort.current?.abort();
+    setDumpCheck(null);
+    try {
+      const result = await solve(hand);
+      setGame((g) => ({ ...g, solution: result, solvedFor: sortLetters(hand).join("") }));
+      setPhase("result");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Solving failed.");
+      setPhase("hand");
     }
   }, []);
 
-  // Cleanup camera on unmount
-  useEffect(() => {
-    return () => {
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((t) => t.stop());
+  // For each distinct letter, try solving the hand without it. A letter whose
+  // removal leaves a hand that fits is a safe dump: whatever three come back,
+  // you already have a board for everything else.
+  const findDumps = useCallback(async (hand: string[]) => {
+    dumpAbort.current?.abort();
+    const ctrl = new AbortController();
+    dumpAbort.current = ctrl;
+    const candidates = sortLetters([...new Set(hand)]).sort(
+      (a, b) => awkwardness(b, hand) - awkwardness(a, hand)
+    );
+    let checked = 0;
+    const fits: string[] = [];
+    setDumpCheck({ running: true, checked, total: candidates.length, fits: [] });
+    const queue = [...candidates];
+    const worker = async () => {
+      while (queue.length && !ctrl.signal.aborted) {
+        const letter = queue.shift()!;
+        try {
+          const r = await solve(removeOne(hand, letter), ctrl.signal);
+          if (r.solved) fits.push(letter);
+        } catch {
+          // A failed check just doesn't count as a fit.
+        }
+        if (ctrl.signal.aborted) return;
+        checked++;
+        const ordered = candidates.filter((c) => fits.includes(c));
+        setDumpCheck({ running: true, checked, total: candidates.length, fits: ordered });
       }
     };
+    await Promise.all(Array.from({ length: 6 }, worker));
+    if (!ctrl.signal.aborted)
+      setDumpCheck((d) => (d ? { ...d, running: false } : d));
   }, []);
 
-  // Fit the solution grid to the available width. A 21-tile hand can produce a
-  // board 17 columns wide, which is ~710px of fixed-size tiles - far past the
-  // edge of a phone - so scale the tiles down instead of scrolling.
-  const gridCols = solution?.grid?.length
-    ? solution.grid.reduce((m, r) => Math.max(m, r.length), 0)
-    : 0;
-
+  // Start the dump helper whenever a hand comes back unsolved.
   useEffect(() => {
-    if (!gridCols) return;
-    const el = gridWrapRef.current;
-    if (!el) return;
+    if (phase === "result" && game.solution && !game.solution.solved && !dumpCheck && letters.length > 2)
+      findDumps(letters);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, game.solution]);
 
-    const fit = () => {
-      const available = el.clientWidth;
-      if (!available) return;
-      const perTile = (available - GRID_GAP * (gridCols - 1)) / gridCols;
-      setTileSize(Math.max(MIN_TILE, Math.min(MAX_TILE, Math.floor(perTile))));
-    };
-
-    fit();
-    const ro = new ResizeObserver(fit);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [gridCols]);
-
-  const tileStyle = {
-    width: tileSize,
-    height: tileSize,
-    minWidth: tileSize,
-    minHeight: tileSize,
-    fontSize: Math.max(8, Math.round(tileSize * 0.55)),
-    borderWidth: tileSize < 20 ? 1 : 2,
-    borderRadius: tileSize < 20 ? 2 : 4,
+  const dump = (letter: string) => {
+    dumpAbort.current?.abort();
+    setChoosingDump(false);
+    setSelected(null);
+    setDumpCheck(null);
+    setGame((g) => {
+      const i = g.hand.findIndex((t) => t.letter === letter);
+      return {
+        ...g,
+        hand: g.hand.filter((_, j) => j !== i),
+        dumped: letter,
+        drawn: [],
+        solution: null,
+        solvedFor: null,
+        photo: null,
+      };
+    });
+    setError(null);
+    setPhase("draw");
   };
 
-  const emptyTileStyle = {
-    width: tileSize,
-    height: tileSize,
-    minWidth: tileSize,
-    minHeight: tileSize,
-    flexShrink: 0,
+  const dumpTile = (id: number) => {
+    const t = game.hand.find((x) => x.id === id);
+    if (t) dump(t.letter);
   };
 
-  const placedTiles = solution?.grid
-    ? solution.grid.reduce(
-        (n, row) => n + row.reduce((m, c) => m + (c ? 1 : 0), 0),
-        0
-      )
-    : 0;
-
-  const solutionWords =
-    solution?.solved && solution.grid
-      ? extractWords(solution.grid)
-      : { across: [], down: [] };
-
-  // Failed solve shouldn't be a dead end: drop the user back on the capture
-  // step with the attempted letters prefilled so they can fix a misread tile.
-  const editLetters = () => {
-    setManualInput(lastLetters);
-    setSolution(null);
-    setSolveError(null);
-    setStep("capture");
+  const finishDraw = () => {
+    const hand = sortHand([...game.hand, ...toTiles(game.drawn)]);
+    const entry = `Dumped ${game.dumped?.toUpperCase()}, drew ${game.drawn.map((l) => l.toUpperCase()).join(" ")}`;
+    setGame((g) => ({
+      ...g,
+      hand,
+      expected: hand.length,
+      drawn: [],
+      dumped: null,
+      history: [...g.history, entry],
+    }));
+    runSolve(lettersOf(hand));
   };
 
-  // ============================================================================
-  // Detection
-  // ============================================================================
-
-  const runDetection = useCallback(async () => {
-    if (!capturedImage) return;
-
-    setDetecting(true);
-    setDetectionError(null);
-    setDetection(null);
-
-    try {
-      const formData = new FormData();
-      formData.append("image", capturedImage);
-
-      const res = await fetch(`${DETECTION_SERVER}/detect`, {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!res.ok) throw new Error(`Detection server error: ${res.status}`);
-
-      const data: DetectionResult = await res.json();
-      setDetection(data);
-      setCorrectedLetters(data.letters);
-
-      // If count matches, go to detection view (auto-solve triggered there)
-      setStep("detection");
-    } catch (e) {
-      const raw = e instanceof Error ? e.message : "Detection error";
-      setDetectionError(
-        /failed to fetch|networkerror|load failed/i.test(raw)
-          ? `Could not reach the detection server at ${DETECTION_SERVER}. Is it running?`
-          : raw
-      );
-    } finally {
-      setDetecting(false);
-    }
-  }, [capturedImage]);
-
-  // ============================================================================
-  // Solving
-  // ============================================================================
-
-  const solvePuzzle = useCallback(async (letters: string) => {
-    setLastLetters(letters);
-    setSolving(true);
-    setSolveError(null);
-    setSolution(null);
-
-    try {
-      const res = await fetch(`${SOLVER_SERVER}/solve`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ letters }),
-      });
-
-      if (!res.ok) throw new Error(`Solver error: ${res.status}`);
-
-      const data: SolveResult = await res.json();
-      setSolution(data);
-      setStep("solved");
-    } catch (e) {
-      // A dead backend surfaces as a bare "Failed to fetch", which tells a
-      // first-time user nothing. Name the likely cause instead.
-      const raw = e instanceof Error ? e.message : "Solve error";
-      setSolveError(
-        /failed to fetch|networkerror|load failed/i.test(raw)
-          ? `Could not reach the solver at ${SOLVER_SERVER}. Is it running?`
-          : raw
-      );
-    } finally {
-      setSolving(false);
-    }
-  }, []);
-
-  // ============================================================================
-  // Step navigation
-  // ============================================================================
-
-  const startNewGame = () => {
-    const count = customCount ? parseInt(customCount, 10) : tileCount;
-    if (isNaN(count) || count < 1) return;
-    setTileCount(count);
-    setCapturedImage(null);
-    setCapturedPreview(null);
-    setDetection(null);
-    setDetectionError(null);
-    setSolution(null);
-    setSolveError(null);
-    setCorrectedLetters("");
-    setManualInput("");
-    setStep("capture");
+  const setTileLetter = (id: number, letter: string) => {
+    setGame((g) => ({
+      ...g,
+      hand: sortHand(g.hand.map((t) => (t.id === id ? { ...t, letter, conf: 1 } : t))),
+    }));
+    setSelected(null);
   };
 
-  const resetGame = () => {
-    stopCamera();
-    setCapturedImage(null);
-    setCapturedPreview(null);
-    setDetection(null);
-    setDetectionError(null);
-    setSolution(null);
-    setSolveError(null);
-    setCorrectedLetters("");
-    setManualInput("");
-    setStep("setup");
+  const removeTile = (id: number) => {
+    setGame((g) => ({ ...g, hand: g.hand.filter((t) => t.id !== id) }));
+    setSelected(null);
   };
 
-  const handleCorrectionSubmit = () => {
-    const filtered = correctedLetters
-      .toLowerCase()
-      .split("")
-      .filter((c) => VALID_CHARS.has(c))
-      .join("");
-    if (filtered.length < 2) return;
-    setCorrectedLetters(filtered);
-    solvePuzzle(filtered);
-  };
+  const addTile = (letter: string) =>
+    setGame((g) => ({ ...g, hand: sortHand([...g.hand, ...toTiles([letter])]) }));
 
-  const handleManualSolve = () => {
-    const filtered = manualInput
-      .toLowerCase()
-      .split("")
-      .filter((c) => VALID_CHARS.has(c))
-      .join("");
-    if (filtered.length < 2) return;
-    setManualInput(filtered);
-    solvePuzzle(filtered);
-  };
-
-  const retakePhoto = () => {
-    setCapturedImage(null);
-    setCapturedPreview(null);
-    setDetection(null);
-    setDetectionError(null);
-  };
-
-  // ============================================================================
+  // ==========================================================================
   // Render
-  // ============================================================================
+  // ==========================================================================
+
+  const count = game.hand.length;
+  const expected = game.expected;
+  const countOk = expected == null || count === expected;
+  const selectedTile = game.hand.find((t) => t.id === selected) ?? null;
+  const solution = game.solution;
+  const solutionCurrent = solution && game.solvedFor === handKey;
+  const doubtfulCount = game.hand.filter((t) => (t.conf ?? 1) < DOUBTFUL).length;
 
   return (
-    <div className="flex min-h-screen flex-col items-center px-4 py-6">
-      <header className="mb-2">
-        <h1 className="text-lg font-bold tracking-tight">
-          Bananagrams <span style={{ color: "var(--accent)" }}>Assistant</span>
-        </h1>
+    <div className="app">
+      <input ref={cameraInput} type="file" accept="image/*" capture="environment" hidden onChange={onPhoto} />
+      <input ref={libraryInput} type="file" accept="image/*" hidden onChange={onPhoto} />
+
+      <header className="topbar">
+        <div className="brand">
+          <Tile letter="b" size={28} />
+          <span>
+            Bananagrams <span className="text-accent">Assistant</span>
+          </span>
+        </div>
+        {phase !== "start" && (
+          <button type="button" className="ghost-btn" onClick={newGame}>
+            New game
+          </button>
+        )}
       </header>
 
-      {/* ── SETUP ── */}
-      {step === "setup" && (
-        <div className="w-full max-w-md flex flex-col items-center gap-6 mt-6">
-          <h2 className="text-xl font-semibold">Start a new game</h2>
-          <p className="text-sm opacity-60 text-center">
-            Choose how many tiles each player gets this round
-          </p>
-
-          <div className="flex gap-3 flex-wrap justify-center">
-            {TILE_PRESETS.map((n) => (
-              <button
-                key={n}
-                onClick={() => {
-                  setTileCount(n);
-                  setCustomCount("");
-                }}
-                className="rounded-lg px-5 py-3 text-lg font-bold transition-all cursor-pointer"
-                style={{
-                  background: tileCount === n && !customCount ? "var(--accent)" : "var(--input-bg)",
-                  color: tileCount === n && !customCount ? "#000" : "var(--foreground)",
-                  border: `2px solid ${tileCount === n && !customCount ? "var(--accent)" : "var(--input-border)"}`,
-                }}
-              >
-                {n}
-              </button>
-            ))}
-
-            <input
-              type="number"
-              min="1"
-              max="144"
-              value={customCount}
-              onChange={(e) => {
-                const value = e.target.value.replace(/[^0-9]/g, '');
-                setCustomCount(value);
-                if (value) setTileCount(parseInt(value, 10));
-              }}
-              onKeyDown={(e) => {
-                // Prevent typing non-numeric characters
-                if (!/[0-9]/.test(e.key) && !['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Tab'].includes(e.key)) {
-                  e.preventDefault();
-                }
-              }}
-              placeholder="..."
-              className="w-20 rounded-lg px-3 py-3 text-lg text-center font-bold outline-none focus:ring-2"
-              style={{
-                background: "var(--input-bg)",
-                border: "2px solid var(--input-border)",
-                color: "var(--foreground)",
-              }}
-            />
-          </div>
-
-          <button
-            onClick={startNewGame}
-            className="btn-primary rounded-lg px-8 py-3 text-lg font-bold transition-all"
-          >
-            Start game – {customCount || tileCount} tiles
-          </button>
-        </div>
-      )}
-
-      {/* ── CAPTURE ── */}
-      {step === "capture" && (
-        <div className="w-full max-w-lg flex flex-col items-center gap-4 mt-6">
-          <h2 className="text-xl font-semibold">Capture the tiles</h2>
-          <p className="text-sm opacity-60 text-center">
-            Take a photo or upload one ({tileCount} tiles)
-          </p>
-
-          {/* Camera view */}
-          {cameraActive && (
-            <div className="relative w-full rounded-lg overflow-hidden">
-              <video
-                ref={videoRef}
-                autoPlay
-                playsInline
-                className="w-full rounded-lg"
-              />
-              <button
-                onClick={capturePhoto}
-                className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full w-16 h-16 border-4 border-white bg-white/30 cursor-pointer hover:bg-white/50 transition-all"
-              />
-            </div>
-          )}
-
-          {/* Captured preview */}
-          {capturedPreview && !cameraActive && (
-            <div className="w-full">
-              <img
-                src={capturedPreview}
-                alt="Captured photo"
-                className="w-full rounded-lg"
-              />
-            </div>
-          )}
-
-          {/* Action buttons */}
-          {!cameraActive && !capturedPreview && (
-            <div className="flex flex-col gap-3 w-full">
-              <button
-                onClick={startCamera}
-                className="btn-primary w-full rounded-lg px-6 py-4 text-lg font-bold transition-all"
-              >
-                📷 Open camera
-              </button>
-
-              <label
-                className="w-full rounded-lg px-6 py-4 text-lg font-bold text-center cursor-pointer hover:opacity-90 transition-all"
-                style={{
-                  background: "var(--input-bg)",
-                  border: "2px solid var(--input-border)",
-                  color: "var(--foreground)",
-                  display: "block",
-                }}
-              >
-                📁 Upload photo
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={handleFileUpload}
-                  className="hidden"
-                />
-              </label>
-
-              {/* Divider */}
-              <div className="flex items-center gap-3 my-2">
-                <div className="flex-1 h-px" style={{ background: "var(--input-border)" }} />
-                <span className="text-sm opacity-40">or</span>
-                <div className="flex-1 h-px" style={{ background: "var(--input-border)" }} />
+      <main className="content">
+        {/* ── START ─────────────────────────────────────────────────────── */}
+        {phase === "start" && (
+          <section className="stack-lg fade-in">
+            <div className="hero">
+              <div className="hero-tiles" aria-hidden>
+                {"BANAANI".split("").map((l, i) => (
+                  <Tile key={i} letter={l} size={38} className="tile-drop" style={{ animationDelay: `${i * 60}ms` }} />
+                ))}
               </div>
+              <h1 className="title">What&apos;s in your hand?</h1>
+              <p className="muted">
+                Snap your tiles and get a grid that uses every one of them.
+              </p>
+            </div>
 
-              {/* Manual input */}
-              <div className="flex flex-col gap-2">
-                <label className="text-sm opacity-60">Manual input</label>
-                <div className="flex gap-2">
+            <div className="card stack">
+              <div className="label">Tiles in hand</div>
+              <div className="segmented">
+                {PRESETS.map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    className={expected === n && !customOpen ? "seg seg-on" : "seg"}
+                    onClick={() => {
+                      setCustomOpen(false);
+                      setGame((g) => ({ ...g, expected: n }));
+                    }}
+                  >
+                    {n}
+                  </button>
+                ))}
+                {customOpen ? (
                   <input
-                    type="text"
-                    value={manualInput}
+                    autoFocus
+                    inputMode="numeric"
+                    className="seg seg-on seg-input"
+                    value={expected ?? ""}
+                    placeholder="#"
                     onChange={(e) => {
-                      const filtered = e.target.value
-                        .toLowerCase()
-                        .split("")
-                        .filter((c) => VALID_CHARS.has(c))
-                        .join("");
-                      setManualInput(filtered);
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && manualInput.length >= 2) {
-                        handleManualSolve();
-                      }
-                    }}
-                    placeholder="Type letters..."
-                    className="flex-1 rounded-lg px-4 py-3 text-lg font-mono tracking-widest uppercase outline-none focus:ring-2"
-                    style={{
-                      background: "var(--input-bg)",
-                      border: "2px solid var(--input-border)",
-                      color: "var(--foreground)",
+                      const n = parseInt(e.target.value.replace(/\D/g, ""), 10);
+                      setGame((g) => ({ ...g, expected: isNaN(n) ? null : Math.min(144, n) }));
                     }}
                   />
+                ) : (
                   <button
-                    onClick={handleManualSolve}
-                    disabled={manualInput.length < 2}
-                    className="btn-primary rounded-lg px-6 py-3 font-bold transition-all"
+                    type="button"
+                    className={expected != null && !PRESETS.includes(expected) ? "seg seg-on" : "seg"}
+                    onClick={() => setCustomOpen(true)}
                   >
-                    Solve
+                    {expected != null && !PRESETS.includes(expected) ? expected : "Other"}
                   </button>
-                </div>
-                {manualInput.length > 0 && (
-                  <p className="text-xs opacity-50">
-                    {manualInput.length} letters
-                  </p>
                 )}
               </div>
+              <p className="hint">Used to check the photo didn&apos;t miss a tile.</p>
             </div>
-          )}
 
-          {/* After capture actions */}
-          {capturedPreview && !detecting && (
-            <div className="flex gap-3 w-full">
-              <button
-                onClick={retakePhoto}
-                className="btn-secondary flex-1 rounded-lg px-4 py-3 font-bold transition-all"
-              >
-                Retake
+            {error && <div className="alert alert-danger">{error}</div>}
+
+            <div className="stack">
+              <button type="button" className="btn btn-primary btn-lg" onClick={() => pickPhoto("hand", true)}>
+                <CameraIcon /> Take a photo
               </button>
-              <button
-                onClick={runDetection}
-                className="btn-primary flex-1 rounded-lg px-4 py-3 font-bold transition-all"
-              >
-                Detect tiles
-              </button>
-            </div>
-          )}
-
-          {/* Detecting spinner */}
-          {detecting && (
-            <div className="flex flex-col items-center gap-3 mt-4">
-              <div className="h-10 w-10 animate-spin rounded-full border-4 divider border-t-[var(--accent)]" />
-              <p className="text-sm opacity-60">Detecting letters...</p>
-            </div>
-          )}
-
-          {/* Detection error */}
-          {detectionError && (
-            <div className="alert-danger rounded-lg px-6 py-3 w-full text-center">
-              {detectionError}
-            </div>
-          )}
-
-          {/* Solve error. The manual-input Solve lives on this step, so its
-              failures have to surface here; previously solveError was only
-              rendered on the detection step and a failed solve from here was
-              silent. */}
-          {solveError && (
-            <div className="alert-danger rounded-lg px-6 py-3 w-full text-center">
-              {solveError}
-            </div>
-          )}
-
-          {/* Back button */}
-          <button
-            onClick={resetGame}
-            className="text-sm opacity-50 hover:opacity-80 cursor-pointer mt-2"
-          >
-            ← Back to start
-          </button>
-        </div>
-      )}
-
-      {/* ── DETECTION RESULT ── */}
-      {step === "detection" && detection && (
-        <div className="w-full max-w-lg flex flex-col items-center gap-4">
-          {/* Annotated image */}
-          <img
-            src={`data:image/jpeg;base64,${detection.annotated_image}`}
-            alt="Detected tiles"
-            className="w-full rounded-lg"
-          />
-
-          {/* Timing breakdown */}
-          {detection.timing && (
-            <div
-              className="panel w-full rounded-lg px-4 py-3 cursor-pointer transition-opacity hover:opacity-80"
-              onClick={() => setShowDetectionStats(!showDetectionStats)}
-            >
-              <div className="flex justify-between items-center">
-                <div className="flex gap-4 text-sm opacity-70">
-                  <div>Total: {detection.timing.total_ms} ms</div>
-                </div>
-                <span className="text-xs opacity-50">{showDetectionStats ? "▼" : "▶"}</span>
-              </div>
-
-              {/* Expanded stats */}
-              {showDetectionStats && (
-                <div className="divider mt-2.5 pt-2.5 border-t space-y-1">
-                  <div className="text-xs font-semibold opacity-70 mb-1.5">Pipeline</div>
-                  <div className="flex justify-between text-xs opacity-60 font-mono">
-                    <span>Preprocess</span>
-                    <span>{detection.timing.preprocess_ms} ms</span>
-                  </div>
-                  <div className="flex justify-between text-xs opacity-60 font-mono">
-                    <span>Inference</span>
-                    <span>{detection.timing.inference_ms} ms</span>
-                  </div>
-                  <div className="flex justify-between text-xs opacity-60 font-mono">
-                    <span>Postprocess</span>
-                    <span>{detection.timing.postprocess_ms} ms</span>
-                  </div>
-                  
-                  {detection.yolo_timing && (
-                    <>
-                      <div className="divider mt-2 pt-2 border-t"></div>
-                      <div className="text-xs font-semibold opacity-70 mb-1">YOLO Internal</div>
-                      <div className="flex justify-between text-xs opacity-60 font-mono">
-                        <span>Preprocess</span>
-                        <span>{detection.yolo_timing.preprocess_ms} ms</span>
-                      </div>
-                      <div className="flex justify-between text-xs opacity-60 font-mono">
-                        <span>Inference</span>
-                        <span>{detection.yolo_timing.inference_ms} ms</span>
-                      </div>
-                      <div className="flex justify-between text-xs opacity-60 font-mono">
-                        <span>Postprocess</span>
-                        <span>{detection.yolo_timing.postprocess_ms} ms</span>
-                      </div>
-                    </>
-                  )}
-                  
-                  {detection.thresholds && (
-                    <>
-                      <div className="divider mt-2 pt-2 border-t"></div>
-                      <div className="text-xs font-semibold opacity-70 mb-1">Config</div>
-                      <div className="flex justify-between text-xs opacity-60 font-mono">
-                        <span>NMS threshold</span>
-                        <span>{detection.thresholds.nms}</span>
-                      </div>
-                      <div className="flex justify-between text-xs opacity-60 font-mono">
-                        <span>Confidence threshold</span>
-                        <span>{detection.thresholds.confidence}</span>
-                      </div>
-                    </>
-                  )}
-                  
-                  {detection.avg_confidence != null && (
-                    <>
-                      <div className="divider mt-2 pt-2 border-t"></div>
-                      <div className="flex justify-between text-xs opacity-60 font-mono">
-                        <span>Avg confidence</span>
-                        <span>{detection.avg_confidence}%</span>
-                      </div>
-                    </>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Detection summary */}
-          <div
-            className="panel w-full rounded-lg p-4"
-          >
-            <div className="flex justify-between items-center mb-2">
-              <span className="text-sm opacity-60">Detected</span>
-              <span
-                className="font-bold text-lg"
-                style={{
-                  color: detection.count === tileCount ? "var(--success)" : "var(--danger)",
-                }}
-              >
-                {detection.count} / {tileCount}
-              </span>
-            </div>
-
-            {/* Detected letters as tiles */}
-            <div className="flex flex-wrap gap-1.5 mt-2">
-              {detection.letter_list.map((item, i) => (
-                <div key={i} className="tile text-sm" style={{ width: 36, height: 36, fontSize: "1rem" }}>
-                  {item.letter.toUpperCase()}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Mismatch warning */}
-          {detection.count !== tileCount && (
-            <div className="alert-warn w-full rounded-lg px-4 py-3">
-              <p className="font-medium mb-2">
-                ⚠️ Detected {detection.count} tiles, but expected {tileCount}.
-              </p>
-              <p className="text-sm opacity-80 mb-3">
-                Review the image above and fix the letters below.
-                You can add or remove missing/incorrect tiles manually.
-              </p>
-
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={correctedLetters}
-                  onChange={(e) => {
-                    const filtered = e.target.value
-                      .toLowerCase()
-                      .split("")
-                      .filter((c) => VALID_CHARS.has(c))
-                      .join("");
-                    setCorrectedLetters(filtered);
-                  }}
-                  className="flex-1 rounded-lg px-3 py-2 font-mono tracking-widest uppercase outline-none text-base"
-                  style={{
-                    background: "#1a1a2e",
-                    border: "2px solid var(--input-border)",
-                    color: "var(--foreground)",
-                  }}
-                />
-                <button
-                  onClick={handleCorrectionSubmit}
-                  disabled={correctedLetters.length < 2}
-                  className="btn-primary rounded-lg px-5 py-2 font-bold transition-all"
-                >
-                  Solve
+              <div className="row">
+                <button type="button" className="btn btn-secondary" onClick={() => pickPhoto("hand", false)}>
+                  <ImageIcon /> From library
+                </button>
+                <button type="button" className="btn btn-secondary" onClick={typeHand}>
+                  <KeysIcon /> Type them
                 </button>
               </div>
+            </div>
 
-              <p className="text-xs opacity-50 mt-1">
-                {correctedLetters.length} letters
+            <details className="tips">
+              <summary>Tips for a good photo</summary>
+              <ul>
+                <li>Lay the tiles face up on a plain, contrasting surface.</li>
+                <li>Shoot from straight above, with the whole hand in frame.</li>
+                <li>Tiles can touch and be at any angle. Just don&apos;t stack them.</li>
+              </ul>
+            </details>
+          </section>
+        )}
+
+        {/* ── SCANNING ──────────────────────────────────────────────────── */}
+        {phase === "scanning" && (
+          <section className="stack-lg fade-in">
+            <div className="scan-frame">
+              {/* eslint-disable-next-line @next/next/no-img-element -- a local blob URL, nothing to optimise */}
+              {preview && <img src={preview} alt="Your photo" />}
+              <div className="scan-line" />
+            </div>
+            <div className="center stack-sm">
+              <Spinner />
+              <div className="strong">Reading the tiles…</div>
+              <p className="muted small">
+                {elapsed < 4
+                  ? "This usually takes a couple of seconds."
+                  : "The tile reader naps when nobody's using it. Waking it up takes about 20 seconds; after that it's quick."}
               </p>
             </div>
-          )}
-
-          {/* If count matches, auto-solving */}
-          {detection.count === tileCount && solving && (
-            <div className="flex flex-col items-center gap-3 mt-2">
-              <div className="h-10 w-10 animate-spin rounded-full border-4 divider border-t-[var(--accent)]" />
-              <p className="text-sm opacity-60">Solving...</p>
-            </div>
-          )}
-
-          {/* Solve error */}
-          {solveError && (
-            <div className="alert-danger rounded-lg px-6 py-3 w-full text-center">
-              {solveError}
-            </div>
-          )}
-
-          {/* Actions */}
-          <div className="flex gap-3 w-full">
-            <button
-              onClick={() => {
-                setStep("capture");
-                retakePhoto();
-              }}
-              className="btn-secondary flex-1 rounded-lg px-4 py-3 font-bold transition-all"
-            >
-              Take a new photo
+            <button type="button" className="btn btn-secondary" onClick={cancelScan}>
+              Cancel
             </button>
-            {detection.count === tileCount && !solving && (
-              <button
-                onClick={() => solvePuzzle(detection.letters)}
-                className="btn-primary flex-1 rounded-lg px-4 py-3 font-bold transition-all"
-              >
-                Solve
-              </button>
-            )}
-          </div>
+          </section>
+        )}
 
-          <button
-            onClick={resetGame}
-            className="text-sm opacity-50 hover:opacity-80 cursor-pointer"
-          >
-            ← Back to start
+        {/* ── HAND ──────────────────────────────────────────────────────── */}
+        {phase === "hand" && (
+          <section className="stack-lg fade-in">
+            <div className="section-head">
+              <div>
+                <h2 className="title-sm">Your tiles</h2>
+                <p className="muted small">
+                  {count
+                    ? "Check them against the real ones. Tap a tile to fix it."
+                    : "Tap letters below to add your tiles."}
+                </p>
+              </div>
+              <CountBadge count={count} expected={expected} />
+            </div>
+
+            {!countOk && count > 0 && (
+              <div className="alert alert-warn">
+                {count < (expected ?? 0)
+                  ? `${(expected ?? 0) - count} short of ${expected}. A tile may be hidden or misread; add it with +.`
+                  : `${count - (expected ?? 0)} more than ${expected}. Remove any that were read twice.`}
+              </div>
+            )}
+
+            <div className="card">
+              <div className="rack">
+                {game.hand.map((t) => (
+                  <Tile
+                    key={t.id}
+                    letter={t.letter}
+                    doubtful={(t.conf ?? 1) < DOUBTFUL}
+                    selected={t.id === selected}
+                    onClick={() => setSelected(t.id)}
+                  />
+                ))}
+                <button type="button" className="tile-add" onClick={() => setAdding(true)} aria-label="Add a tile">
+                  +
+                </button>
+              </div>
+              {doubtfulCount > 0 && (
+                <p className="hint mt-3">
+                  <span className="dot-inline" /> {doubtfulCount === 1 ? "This tile was" : "These tiles were"} hard
+                  to read. Worth a second look.
+                </p>
+              )}
+            </div>
+
+            {game.photo && (
+              <div className="card card-flush">
+                <button type="button" className="disclosure" onClick={() => setShowPhoto((s) => !s)}>
+                  <span>What the camera saw</span>
+                  <span className="muted">{showPhoto ? "Hide" : "Show"}</span>
+                </button>
+                {showPhoto && (
+                  // eslint-disable-next-line @next/next/no-img-element -- inline base64 from the detector
+                  <img className="photo" src={`data:image/jpeg;base64,${game.photo}`} alt="Detected tiles" />
+                )}
+              </div>
+            )}
+
+            {error && <div className="alert alert-danger">{error}</div>}
+
+            <div className="actions">
+              <button
+                type="button"
+                className="btn btn-primary btn-lg"
+                disabled={count < 2}
+                onClick={() => runSolve(letters)}
+              >
+                Solve {count >= 2 ? `${count} tiles` : ""}
+              </button>
+              <div className="row">
+                <button type="button" className="btn btn-secondary" onClick={() => pickPhoto("hand", true)}>
+                  <CameraIcon /> Retake
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  disabled={count < 1}
+                  onClick={() => setChoosingDump(true)}
+                >
+                  Dump a tile
+                </button>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* ── SOLVING ───────────────────────────────────────────────────── */}
+        {phase === "solving" && (
+          <section className="stack-lg center fade-in pt-10">
+            <div className="rack rack-center">
+              {game.hand.map((t, i) => (
+                <Tile key={t.id} letter={t.letter} size={34} className="tile-bob" style={{ animationDelay: `${i * 70}ms` }} />
+              ))}
+            </div>
+            <div className="strong">Fitting {count} tiles together…</div>
+            <p className="muted small">Hard hands can take up to 5 seconds.</p>
+          </section>
+        )}
+
+        {/* ── RESULT ────────────────────────────────────────────────────── */}
+        {phase === "result" && solution && solutionCurrent && (
+          <section className="stack-lg fade-in">
+            {solution.solved ? (
+              <SolvedView solution={solution} count={count} />
+            ) : (
+              <>
+                <div className="center stack-sm">
+                  <div className="badge badge-danger">No grid found</div>
+                  <h2 className="title-sm">These {count} tiles don&apos;t fit together</h2>
+                  <p className="muted small">
+                    Time to dump: put one tile back in the pile and take {DRAW_COUNT}. If a tile was misread,
+                    fix it first.
+                  </p>
+                </div>
+
+                <div className="card stack">
+                  <div className="label">Suggested dump</div>
+                  {dumpCheck && dumpCheck.fits.length > 0 ? (
+                    <>
+                      <div className="rack">
+                        {dumpCheck.fits.map((l) => (
+                          <Tile key={l} letter={l} highlight onClick={() => dump(l)} label={`Dump ${l.toUpperCase()}`} />
+                        ))}
+                      </div>
+                      <p className="hint">
+                        Without {dumpCheck.fits.length === 1 ? "this tile" : "any one of these"}, the rest of your
+                        hand makes a full grid. {dumpCheck.fits.length === 1 ? "Tap it" : "Tap one"} to dump it.
+                      </p>
+                    </>
+                  ) : dumpCheck?.running ? null : (
+                    <>
+                      <div className="rack">
+                        {sortLetters([...new Set(letters)])
+                          .sort((a, b) => awkwardness(b, letters) - awkwardness(a, letters))
+                          .slice(0, 3)
+                          .map((l) => (
+                            <Tile key={l} letter={l} onClick={() => dump(l)} label={`Dump ${l.toUpperCase()}`} />
+                          ))}
+                      </div>
+                      <p className="hint">
+                        No single dump makes the rest fit, so these are just the hardest tiles to place.
+                      </p>
+                    </>
+                  )}
+                  {dumpCheck?.running && (
+                    <div className="progress-row">
+                      <div className="progress">
+                        <div style={{ width: `${(dumpCheck.checked / Math.max(1, dumpCheck.total)) * 100}%` }} />
+                      </div>
+                      <span className="muted small">
+                        Trying each tile {dumpCheck.checked}/{dumpCheck.total}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="card">
+                  <div className="label mb-2">Your hand</div>
+                  <div className="rack">
+                    {game.hand.map((t) => (
+                      <Tile key={t.id} letter={t.letter} size={30} />
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
+
+            <div className="actions">
+              {solution.solved ? (
+                <button type="button" className="btn btn-primary btn-lg" onClick={newGame}>
+                  New game
+                </button>
+              ) : (
+                <button type="button" className="btn btn-primary btn-lg" onClick={() => setChoosingDump(true)}>
+                  Choose a tile to dump
+                </button>
+              )}
+              <div className="row">
+                <button type="button" className="btn btn-secondary" onClick={() => setPhase("hand")}>
+                  Edit tiles
+                </button>
+              </div>
+            </div>
+
+            {game.history.length > 0 && (
+              <div className="history">
+                {game.history.map((h, i) => (
+                  <div key={i}>{h}</div>
+                ))}
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* ── DRAW ──────────────────────────────────────────────────────── */}
+        {phase === "draw" && (
+          <section className="stack-lg fade-in">
+            <div className="center stack-sm">
+              <div className="dump-visual">
+                {game.dumped && <Tile letter={game.dumped} size={46} className="tile-dumped" />}
+                <span className="arrow">→</span>
+                <div className="pile">pile</div>
+              </div>
+              <h2 className="title-sm">
+                Put {game.dumped ? game.dumped.toUpperCase() : "it"} back, take {DRAW_COUNT}
+              </h2>
+              <p className="muted small">Add the {DRAW_COUNT} tiles you drew.</p>
+            </div>
+
+            <div className="card stack">
+              <div className="draw-slots">
+                {Array.from({ length: Math.max(DRAW_COUNT, game.drawn.length) }, (_, i) =>
+                  game.drawn[i] ? (
+                    <Tile
+                      key={i}
+                      letter={game.drawn[i]}
+                      size={52}
+                      className="tile-drop"
+                      onClick={() => setGame((g) => ({ ...g, drawn: g.drawn.filter((_, j) => j !== i) }))}
+                      label={`Remove ${game.drawn[i].toUpperCase()}`}
+                    />
+                  ) : (
+                    <div key={i} className="slot" style={{ width: 52, height: 52 }} />
+                  )
+                )}
+              </div>
+              <LetterPad onPick={(l) => setGame((g) => ({ ...g, drawn: [...g.drawn, l] }))} />
+              <p className="hint center">Tap a drawn tile to take it back off.</p>
+            </div>
+
+            {error && <div className="alert alert-danger">{error}</div>}
+
+            <div className="actions">
+              <button
+                type="button"
+                className="btn btn-primary btn-lg"
+                disabled={game.drawn.length === 0}
+                onClick={finishDraw}
+              >
+                {game.drawn.length === DRAW_COUNT
+                  ? `Solve with ${count + DRAW_COUNT} tiles`
+                  : game.drawn.length
+                    ? `Solve with ${count + game.drawn.length} tiles`
+                    : `Add ${DRAW_COUNT} tiles`}
+              </button>
+              <button type="button" className="btn btn-secondary" onClick={() => pickPhoto("draw", true)}>
+                <CameraIcon /> Photograph the new tiles
+              </button>
+            </div>
+          </section>
+        )}
+      </main>
+
+      {/* ── Sheets ──────────────────────────────────────────────────────── */}
+      <Sheet
+        open={selectedTile != null}
+        onClose={() => setSelected(null)}
+        title={
+          selectedTile && (
+            <span className="flex items-center gap-3">
+              <Tile letter={selectedTile.letter} size={34} /> Fix this tile
+            </span>
+          )
+        }
+      >
+        {selectedTile && (
+          <div className="stack">
+            <div className="label">Change it to</div>
+            <LetterPad onPick={(l) => setTileLetter(selectedTile.id, l)} />
+            <div className="row">
+              <button type="button" className="btn btn-secondary" onClick={() => removeTile(selectedTile.id)}>
+                Remove
+              </button>
+              <button type="button" className="btn btn-secondary" onClick={() => dumpTile(selectedTile.id)}>
+                Dump it
+              </button>
+            </div>
+          </div>
+        )}
+      </Sheet>
+
+      <Sheet
+        open={adding}
+        onClose={() => setAdding(false)}
+        title={
+          <span>
+            Add tiles <span className="muted">· {count}{expected ? ` / ${expected}` : ""}</span>
+          </span>
+        }
+      >
+        <div className="stack">
+          <div className="rack rack-mini">
+            {game.hand.length === 0 && <span className="muted small">Tap letters to add them.</span>}
+            {game.hand.map((t) => (
+              <Tile key={t.id} letter={t.letter} size={26} onClick={() => removeTile(t.id)} label={`Remove ${t.letter}`} />
+            ))}
+          </div>
+          <LetterPad onPick={addTile} />
+          <button type="button" className="btn btn-primary" onClick={() => setAdding(false)}>
+            Done
           </button>
         </div>
-      )}
+      </Sheet>
 
-      {/* ── SOLVED ── */}
-      {step === "solved" && solution && (
-        <div className="w-full max-w-lg md:max-w-4xl flex flex-col items-center gap-5 mt-4">
-          {solution.solved ? (
-            <>
-              <div className="flex flex-col items-center gap-1">
-                <h2 className="text-xl font-semibold" style={{ color: "var(--success)" }}>
-                  Solution found!
-                </h2>
-                <p className="text-sm opacity-60">
-                  {placedTiles} tiles placed in {formatMs(solution.time_ms)}
-                </p>
-              </div>
-
-              {/* Solution grid - tiles scale down so the board always fits */}
-              <div ref={gridWrapRef} className="w-full flex justify-center">
-                <div className="flex flex-col" style={{ gap: GRID_GAP }}>
-                  {solution.grid.map((row, y) => (
-                    <div key={y} className="flex" style={{ gap: GRID_GAP }}>
-                      {Array.from({ length: gridCols }, (_, x) => {
-                        const cell = row[x] ?? null;
-                        return cell ? (
-                          <div key={x} className="tile" style={tileStyle}>
-                            {cell}
-                          </div>
-                        ) : (
-                          <div key={x} style={emptyTileStyle} />
-                        );
-                      })}
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Words the solver placed */}
-              {(solutionWords.across.length > 0 || solutionWords.down.length > 0) && (
-                <div
-                  className="panel w-full rounded-lg px-4 py-3"
-                >
-                  <div className="flex flex-col gap-2.5">
-                    {([
-                      ["Across", solutionWords.across],
-                      ["Down", solutionWords.down],
-                    ] as const).map(([label, list]) =>
-                      list.length === 0 ? null : (
-                        <div key={label} className="flex flex-wrap items-baseline gap-x-2 gap-y-1.5">
-                          <span className="text-xs uppercase tracking-wide opacity-50 w-14 shrink-0">
-                            {label}
-                          </span>
-                          {list.map((w, i) => (
-                            <span
-                              key={`${w}-${i}`}
-                              className="chip rounded px-2 py-0.5 text-sm font-mono tracking-wide"
-                            >
-                              {w}
-                            </span>
-                          ))}
-                        </div>
-                      )
-                    )}
-                  </div>
-                </div>
-              )}
-            </>
-          ) : (
-            <>
-              <div className="flex flex-col items-center gap-1">
-                <h2 className="text-xl font-semibold" style={{ color: "var(--danger)" }}>
-                  No solution found
-                </h2>
-                <p className="text-sm opacity-60 text-center max-w-sm">
-                  The solver searched for {formatMs(solution.time_ms)} without finding a way to
-                  use every tile. That usually means a letter was misread, or the hand is
-                  simply short on vowels.
-                </p>
-              </div>
-
-              {lastLetters && (
-                <div
-                  className="panel w-full rounded-lg px-4 py-3 text-center"
-                >
-                  <div className="text-xs uppercase tracking-wide opacity-50 mb-1.5">
-                    Letters tried
-                  </div>
-                  <div className="font-mono tracking-widest uppercase break-all">
-                    {lastLetters}
-                  </div>
-                </div>
-              )}
-            </>
-          )}
-
-          {/* Actions */}
-          <div className="flex gap-3 w-full max-w-sm mt-1">
-            {!solution.solved && lastLetters && (
-              <button
-                onClick={editLetters}
-                className="btn-secondary flex-1 rounded-lg px-4 py-3 font-bold transition-all"
-              >
-                Edit letters
-              </button>
-            )}
-            <button
-              onClick={resetGame}
-              className="btn-primary flex-1 rounded-lg px-4 py-3 font-bold transition-all"
-            >
-              New game
-            </button>
+      <Sheet open={choosingDump} onClose={() => setChoosingDump(false)} title="Which tile goes back?">
+        <div className="stack">
+          <div className="rack">
+            {sortLetters([...new Set(letters)]).map((l) => (
+              <Tile
+                key={l}
+                letter={l}
+                highlight={dumpCheck?.fits.includes(l)}
+                onClick={() => dump(l)}
+                label={`Dump ${l.toUpperCase()}`}
+              />
+            ))}
           </div>
+          {dumpCheck && dumpCheck.fits.length > 0 && (
+            <p className="hint">Highlighted: the rest of your hand fits without it.</p>
+          )}
         </div>
-      )}
-
-      {/* ── Solving overlay ── */}
-      {solving && step !== "detection" && (
-        <div className="mt-8 flex flex-col items-center gap-3">
-          <div className="h-10 w-10 animate-spin rounded-full border-4 divider border-t-[var(--accent)]" />
-          <p className="text-sm opacity-60">Solving...</p>
-        </div>
-      )}
+      </Sheet>
     </div>
+  );
+}
+
+// ============================================================================
+// Pieces
+// ============================================================================
+
+function SolvedView({ solution, count }: { solution: SolveResult; count: number }) {
+  const words = extractWords(solution.grid);
+  return (
+    <>
+      <div className="center stack-sm">
+        <div className="badge badge-success">All {count} tiles placed</div>
+        <h2 className="title-sm">Every tile fits. Lay it out like this.</h2>
+        <p className="muted small">
+          {words.across.length + words.down.length} words, found in {formatMs(solution.time_ms)}
+        </p>
+      </div>
+      <div className="board">
+        <SolutionBoard grid={solution.grid} />
+      </div>
+      <div className="card stack-sm">
+        {([
+          ["Across", words.across],
+          ["Down", words.down],
+        ] as const).map(([label, list]) =>
+          list.length ? (
+            <div key={label} className="word-row">
+              <span className="label w-16 shrink-0">{label}</span>
+              <div className="flex flex-wrap gap-1.5">
+                {list.map((w, i) => (
+                  <span key={`${w}-${i}`} className="chip">
+                    {w}
+                  </span>
+                ))}
+              </div>
+            </div>
+          ) : null
+        )}
+      </div>
+    </>
+  );
+}
+
+function CountBadge({ count, expected }: { count: number; expected: number | null }) {
+  const ok = expected == null || count === expected;
+  return (
+    <div className={ok ? "count count-ok" : "count count-off"}>
+      <span className="count-n">{count}</span>
+      {expected != null && <span className="count-of">/ {expected}</span>}
+    </div>
+  );
+}
+
+function Spinner() {
+  return <div className="spinner" />;
+}
+
+const iconProps = {
+  width: 20,
+  height: 20,
+  viewBox: "0 0 24 24",
+  fill: "none",
+  stroke: "currentColor",
+  strokeWidth: 2,
+  strokeLinecap: "round" as const,
+  strokeLinejoin: "round" as const,
+  "aria-hidden": true,
+};
+
+function CameraIcon() {
+  return (
+    <svg {...iconProps}>
+      <path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z" />
+      <circle cx="12" cy="13.5" r="3.5" />
+    </svg>
+  );
+}
+
+function ImageIcon() {
+  return (
+    <svg {...iconProps}>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <circle cx="9" cy="10" r="1.6" />
+      <path d="m21 16-5-5-9 9" />
+    </svg>
+  );
+}
+
+function KeysIcon() {
+  return (
+    <svg {...iconProps}>
+      <rect x="2.5" y="6" width="19" height="12" rx="2" />
+      <path d="M7 10h.01M11 10h.01M15 10h.01M7 14h10" />
+    </svg>
   );
 }

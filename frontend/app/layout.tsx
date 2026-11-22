@@ -1,40 +1,31 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Bricolage_Grotesque, Geist } from "next/font/google";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const body = Geist({ variable: "--font-body", subsets: ["latin"] });
+// A display face with some character, for headings and the tile letters.
+const display = Bricolage_Grotesque({
+  variable: "--font-display",
   subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
+  weight: ["600", "800"],
 });
 
 export const metadata: Metadata = {
   title: "Bananagrams Assistant",
-  description: "Finnish Bananagrams game assistant with tile detection",
+  description: "Photograph your Bananagrams tiles and get a grid that uses every one.",
 };
 
 export const viewport: Viewport = {
-  // Tints the browser chrome on mobile to match the page, which is where
-  // this gets used most.
-  themeColor: "#1a1a2e",
+  themeColor: "#f4eddc",
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
-        {children}
-      </body>
+      <body className={`${body.variable} ${display.variable} antialiased`}>{children}</body>
     </html>
   );
 }
