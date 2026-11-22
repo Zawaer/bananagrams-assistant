@@ -13,10 +13,21 @@ const SOLVER_SERVER = serverUrl(process.env.NEXT_PUBLIC_SOLVER_SERVER_URL, 8080)
 export type DetectionResult = {
   letters: string;
   letter_list: { letter: string; confidence: number }[];
-  annotated_image: string; // base64 JPEG
+  /** Only sent when asked for; the app draws its own overlay from `tiles`. */
+  annotated_image?: string | null;
+  tiles?: DetectedTile[];
+  /** Size of the image the outlines refer to (the uploaded one). */
+  image_size?: [number, number];
   count: number;
   timing?: { preprocess_ms: number; inference_ms: number; postprocess_ms: number; total_ms: number };
   avg_confidence?: number;
+};
+
+export type DetectedTile = {
+  letter: string;
+  confidence: number;
+  box: [number, number, number, number];
+  polygon: [number, number][];
 };
 
 export type SolveResult = {
@@ -58,13 +69,20 @@ async function shrink(file: Blob, maxEdge = 1600): Promise<Blob> {
   }
 }
 
-export async function detect(file: Blob, signal?: AbortSignal): Promise<DetectionResult> {
+// Returns the detection along with the image that was actually sent, since
+// the tile outlines are in that image's coordinates.
+export async function detect(
+  file: Blob,
+  signal?: AbortSignal
+): Promise<DetectionResult & { image: Blob }> {
+  const image = await shrink(file);
   const body = new FormData();
-  body.append("image", await shrink(file));
+  body.append("image", image);
+  body.append("annotate", "0");
   try {
     const res = await fetch(`${DETECTION_SERVER}/detect`, { method: "POST", body, signal });
     if (!res.ok) throw new Error(`The tile reader failed (${res.status}).`);
-    return await res.json();
+    return { ...(await res.json()), image };
   } catch (e) {
     if (signal?.aborted) throw e;
     throw new Error(describe(e, "tile reader"));

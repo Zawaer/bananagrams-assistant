@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { detect, solve, warmDetector, type SolveResult } from "./lib/api";
+import { PhotoOverlay, type Photo } from "./components/PhotoOverlay";
 import { extractWords, formatMs } from "./lib/grid";
 import { awkwardness, removeOne, sortLetters } from "./lib/letters";
 import { LetterPad } from "./components/LetterPad";
@@ -18,14 +19,15 @@ import { Tile } from "./components/Tile";
 // fit, pick a tile to dump, add the three you drew, solve again.
 // ============================================================================
 
-type HandTile = { id: number; letter: string; conf?: number };
+/** `shape` is the tile's outline in the photo, when it came from one. */
+type HandTile = { id: number; letter: string; conf?: number; shape?: [number, number][] };
 
 type Phase = "start" | "scanning" | "hand" | "solving" | "result" | "draw";
 
 type Game = {
   expected: number | null;
   hand: HandTile[];
-  photo: string | null;
+  photo: Photo | null;
   solution: SolveResult | null;
   /** Letters the solution above was computed for. */
   solvedFor: string | null;
@@ -152,36 +154,89 @@ export default function Home() {
     (camera ? cameraInput : libraryInput).current?.click();
   };
 
-  const onPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const onPhoto = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = "";
-    if (!file) return;
-    const returnTo: Phase = scanTarget === "draw" ? "draw" : game.hand.length ? "hand" : "start";
+    if (file) scanImage(file, scanTarget);
+  };
+
+  const scanImage = async (file: Blob, target: "hand" | "draw") => {
+    setScanTarget(target);
+    const returnTo: Phase = target === "draw" ? "draw" : game.hand.length ? "hand" : "start";
     setError(null);
     setPreview(URL.createObjectURL(file));
     setPhase("scanning");
     abortRef.current = new AbortController();
     try {
       const result = await detect(file, abortRef.current.signal);
-      const read = result.letter_list.map((l) => l.letter);
-      if (scanTarget === "draw") {
+      const found = result.tiles ?? result.letter_list.map((l) => ({ ...l, polygon: undefined }));
+      const read = found.map((t) => t.letter);
+      if (target === "draw") {
         setGame((g) => ({ ...g, drawn: [...g.drawn, ...read] }));
         setPhase("draw");
       } else {
         setGame((g) => ({
           ...g,
-          hand: sortHand(toTiles(read, result.letter_list.map((l) => l.confidence))),
-          photo: result.annotated_image,
+          hand: sortHand(
+            found.map((t) => ({ id: nextId++, letter: t.letter, conf: t.confidence, shape: t.polygon }))
+          ),
+          photo: result.image_size
+            ? { url: URL.createObjectURL(result.image), width: result.image_size[0], height: result.image_size[1] }
+            : null,
           solution: null,
           solvedFor: null,
         }));
         setPhase("hand");
+        // Open the photo straight away when there's something to check on it.
+        setShowPhoto(
+          found.some((t) => t.confidence < DOUBTFUL) || (game.expected != null && read.length !== game.expected)
+        );
       }
       if (!read.length) setError("No tiles found in that photo. Try again with the tiles spread out on a plain surface.");
     } catch (err) {
       if (abortRef.current?.signal.aborted) return;
       setError(err instanceof Error ? err.message : "Couldn't read the photo.");
       setPhase(returnTo);
+    }
+  };
+
+  // Pasting: Ctrl/Cmd+V anywhere, or the Paste button where there is no
+  // keyboard. On the draw step a pasted image adds the new tiles; anywhere
+  // else it reads a whole hand.
+  const pasteTarget: "hand" | "draw" | null =
+    phase === "draw" ? "draw" : phase === "start" || phase === "hand" || phase === "result" ? "hand" : null;
+  const scanRef = useRef(scanImage);
+  scanRef.current = scanImage;
+
+  useEffect(() => {
+    if (!pasteTarget) return;
+    const onPaste = (e: ClipboardEvent) => {
+      const item = [...(e.clipboardData?.items ?? [])].find((i) => i.type.startsWith("image/"));
+      const file = item?.getAsFile();
+      if (!file) return;
+      e.preventDefault();
+      scanRef.current(file, pasteTarget);
+    };
+    window.addEventListener("paste", onPaste);
+    return () => window.removeEventListener("paste", onPaste);
+  }, [pasteTarget]);
+
+  const [canPaste, setCanPaste] = useState(false);
+  const [isMac, setIsMac] = useState(false);
+  useEffect(() => {
+    setCanPaste(!!navigator.clipboard?.read);
+    setIsMac(/Mac|iPhone|iPad/.test(navigator.userAgent));
+  }, []);
+
+  const pasteFromClipboard = async (target: "hand" | "draw") => {
+    try {
+      for (const item of await navigator.clipboard.read()) {
+        const type = item.types.find((t) => t.startsWith("image/"));
+        if (type) return scanImage(await item.getType(type), target);
+      }
+      setError("There's no image on the clipboard. Copy a photo of your tiles first.");
+    } catch {
+      setError(`Couldn't read the clipboard. Allow clipboard access, or press ${isMac ? "⌘V" : "Ctrl+V"}.`);
     }
   };
 
@@ -405,12 +460,20 @@ export default function Home() {
               </button>
               <div className="row">
                 <button type="button" className="btn btn-secondary" onClick={() => pickPhoto("hand", false)}>
-                  <ImageIcon /> From library
+                  <ImageIcon /> Library
                 </button>
+                {canPaste && (
+                  <button type="button" className="btn btn-secondary" onClick={() => pasteFromClipboard("hand")}>
+                    <PasteIcon /> Paste
+                  </button>
+                )}
                 <button type="button" className="btn btn-secondary" onClick={typeHand}>
-                  <KeysIcon /> Type them
+                  <KeysIcon /> Type
                 </button>
               </div>
+              <p className="hint center paste-hint">
+                Or paste a picture with <kbd>{isMac ? "⌘" : "Ctrl"}</kbd> <kbd>V</kbd>
+              </p>
             </div>
 
             <details className="tips">
@@ -500,8 +563,22 @@ export default function Home() {
                   <span className="muted">{showPhoto ? "Hide" : "Show"}</span>
                 </button>
                 {showPhoto && (
-                  // eslint-disable-next-line @next/next/no-img-element -- inline base64 from the detector
-                  <img className="photo" src={`data:image/jpeg;base64,${game.photo}`} alt="Detected tiles" />
+                  <>
+                    <PhotoOverlay
+                      photo={game.photo}
+                      tiles={game.hand.flatMap((t) =>
+                        t.shape
+                          ? [{ id: t.id, letter: t.letter, shape: t.shape, doubtful: (t.conf ?? 1) < DOUBTFUL }]
+                          : []
+                      )}
+                      selected={selected}
+                      onSelect={setSelected}
+                    />
+                    <p className="hint photo-caption">
+                      Tap a tile on the photo to fix it.
+                      {doubtfulCount > 0 && " Red ones were hard to read."}
+                    </p>
+                  </>
                 )}
               </div>
             )}
@@ -693,9 +770,16 @@ export default function Home() {
                     ? `Solve with ${count + game.drawn.length} tiles`
                     : `Add ${DRAW_COUNT} tiles`}
               </button>
-              <button type="button" className="btn btn-secondary" onClick={() => pickPhoto("draw", true)}>
-                <CameraIcon /> Photograph the new tiles
-              </button>
+              <div className="row">
+                <button type="button" className="btn btn-secondary" onClick={() => pickPhoto("draw", true)}>
+                  <CameraIcon /> Photograph them
+                </button>
+                {canPaste && (
+                  <button type="button" className="btn btn-secondary" onClick={() => pasteFromClipboard("draw")}>
+                    <PasteIcon /> Paste
+                  </button>
+                )}
+              </div>
             </div>
           </section>
         )}
@@ -856,6 +940,15 @@ function ImageIcon() {
       <rect x="3" y="4" width="18" height="16" rx="2" />
       <circle cx="9" cy="10" r="1.6" />
       <path d="m21 16-5-5-9 9" />
+    </svg>
+  );
+}
+
+function PasteIcon() {
+  return (
+    <svg {...iconProps}>
+      <rect x="5" y="4" width="14" height="17" rx="2" />
+      <path d="M9 4V3h6v1M9 11h6M9 15h4" />
     </svg>
   );
 }

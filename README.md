@@ -335,13 +335,21 @@ The request body may use raw UTF-8 or `\uXXXX` escapes for `ä` and `ö`. Both d
 
 `GET /health` → `{"status": "ok"}`
 
-`POST /detect` with `multipart/form-data` and an `image` field
+`POST /warm` starts loading the model in the background and returns `{"loaded": false}` (or `true` if it already was). The app calls it on open so the model is ready by the time a photo arrives.
+
+`POST /detect` with `multipart/form-data`: an `image` field, and optionally `annotate=0` to skip the server-drawn overlay image (the app draws its own from `tiles`).
 
 ```jsonc
 {
   "letters": "jkotsiloiiiiiäissuesa",
   "letter_list": [{ "letter": "j", "confidence": 0.985 }, ...],
-  "annotated_image": "<base64 jpeg>",
+  "tiles": [
+    // outline in image pixels, simplified from the segmentation mask
+    { "letter": "j", "confidence": 0.985, "box": [412, 230, 498, 318], "polygon": [[430, 230], [498, 251], [480, 318], [412, 297]] },
+    ...
+  ],
+  "image_size": [1200, 1600],
+  "annotated_image": "<base64 jpeg>", // null with annotate=0
   "count": 21,
   "timing":      { "preprocess_ms": 12, "inference_ms": 930, "postprocess_ms": 452, "total_ms": 1394 },
   "yolo_timing": { "preprocess_ms": 2,  "inference_ms": 882, "postprocess_ms": 7 },

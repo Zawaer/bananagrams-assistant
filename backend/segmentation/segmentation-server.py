@@ -164,6 +164,31 @@ if MODEL_URL and not any(p and os.path.exists(p) for p in LOCAL_MODEL_PATHS):
     threading.Thread(target=_download_model, daemon=True).start()
 
 
+def _annotate(image, detections, model):
+    import cv2
+    import supervision as sv
+
+    mask_annotator = sv.MaskAnnotator()
+    label_annotator = sv.LabelAnnotator(
+        text_position=sv.Position.BOTTOM_CENTER,
+        text_scale=1,
+        text_thickness=1,
+    )
+
+    labels = [
+        f"{CLASS_NAME_TO_LABEL.get(model.names[class_id], model.names[class_id])} {confidence:.2f}"
+        for class_id, confidence in zip(detections.class_id, detections.confidence)
+    ]
+
+    annotated_frame = image.copy()
+    annotated_frame = mask_annotator.annotate(scene=annotated_frame, detections=detections)
+    annotated_frame = label_annotator.annotate(scene=annotated_frame, detections=detections, labels=labels)
+
+    # Encode annotated image to base64 JPEG
+    _, buffer = cv2.imencode(".jpg", annotated_frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+    return base64.b64encode(buffer).decode("utf-8")
+
+
 @app.route("/health", methods=["GET"])
 def health():
     return jsonify({"status": "ok"})
@@ -259,27 +284,40 @@ def _detect():
     # Sort by confidence descending
     letter_list.sort(key=lambda x: x["confidence"], reverse=True)
 
+    # Each tile's outline, so the client can draw its own overlay on the
+    # photo. A tile is roughly a square at some angle, so its mask simplifies
+    # to a handful of points; the box is the fallback when there is no mask.
+    tiles = []
+    for i, (class_id, confidence) in enumerate(zip(detections.class_id, detections.confidence)):
+        x1, y1, x2, y2 = (round(float(v)) for v in detections.xyxy[i])
+        polygon = [[x1, y1], [x2, y1], [x2, y2], [x1, y2]]
+        if detections.mask is not None:
+            contours, _ = cv2.findContours(
+                detections.mask[i].astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+            )
+            if contours:
+                c = max(contours, key=cv2.contourArea)
+                approx = cv2.approxPolyDP(c, 0.02 * cv2.arcLength(c, True), True)
+                if len(approx) >= 3:
+                    polygon = approx.reshape(-1, 2).tolist()
+        class_name = model.names[class_id]
+        tiles.append({
+            "letter": CLASS_NAME_TO_LETTER.get(class_name, class_name),
+            "confidence": round(float(confidence), 3),
+            "box": [x1, y1, x2, y2],
+            "polygon": polygon,
+        })
+    tiles.sort(key=lambda t: t["confidence"], reverse=True)
+
+    # The server-drawn overlay is kept for API callers, but the app draws its
+    # own from "tiles" and skips this with annotate=0.
+    want_annotated = request.form.get("annotate", "1") != "0"
+
     # Create annotated image with segmentation masks and labels
-    mask_annotator = sv.MaskAnnotator()
-    label_annotator = sv.LabelAnnotator(
-        text_position=sv.Position.BOTTOM_CENTER,
-        text_scale=1,
-        text_thickness=1,
-    )
+    annotated_b64 = None
+    if want_annotated:
+        annotated_b64 = _annotate(image, detections, model)
 
-    labels = [
-        f"{CLASS_NAME_TO_LABEL.get(model.names[class_id], model.names[class_id])} {confidence:.2f}"
-        for class_id, confidence in zip(detections.class_id, detections.confidence)
-    ]
-
-    annotated_frame = image.copy()
-    annotated_frame = mask_annotator.annotate(scene=annotated_frame, detections=detections)
-    annotated_frame = label_annotator.annotate(scene=annotated_frame, detections=detections, labels=labels)
-
-    # Encode annotated image to base64 JPEG
-    _, buffer = cv2.imencode(".jpg", annotated_frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
-    annotated_b64 = base64.b64encode(buffer).decode("utf-8")
-    
     postprocess_time_ms = round((time.time() - postprocess_start) * 1000)
     total_time_ms = round((time.time() - total_start) * 1000)
 
@@ -291,6 +329,8 @@ def _detect():
             "letters": letters,
             "letter_list": letter_list,
             "annotated_image": annotated_b64,
+            "tiles": tiles,
+            "image_size": [int(image.shape[1]), int(image.shape[0])],
             "count": len(letter_list),
             "timing": {
                 "preprocess_ms": preprocess_time_ms,
