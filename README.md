@@ -260,13 +260,18 @@ make down    # stop them
 make logs    # follow the logs
 ```
 
-`make help` lists the rest. These are thin wrappers over `docker compose`, so
-`docker compose up --build -d` works just as well.
+`make help` lists the rest. These are thin wrappers over `docker compose`
+with `docker-compose.local.yml` layered on top.
 
-That brings up all three services: the frontend on `:3000`, the solver on
-`:8080` and the detection server on `:8081`.
+That serves the whole app on `:3000`. One small Caddy container serves the
+static frontend and proxies the solver and the detection server under `/api`,
+so the browser only ever talks to one address. The detection server downloads
+the ONNX model from the GitHub release into a volume the first time it starts.
+It loads the model only when a photo arrives, and drops it again after ten
+idle minutes (`IDLE_UNLOAD_SECONDS`), so the stack idles at a few tens of MB.
 
-The compose file mounts the ONNX model from `image-segmentation/models/`. Alternatively set `MODEL_DOWNLOAD_URL` to fetch it on first run.
+`docker-compose.homelab.yml` is the always-on variant: no published ports, and
+the frontend joins a shared reverse-proxy network instead.
 
 ### Manual
 

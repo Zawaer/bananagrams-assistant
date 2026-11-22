@@ -1,15 +1,16 @@
+# The three services. Nothing is published here: docker-compose.local.yml adds
+# a port for running it on your own machine (that is what `make up` uses), and
+# docker-compose.homelab.yml attaches it to a reverse proxy instead.
+
 services:
-  segmentation:
+  frontend:
     build:
       context: .
-      dockerfile: Dockerfile.segmentation
-    image: bananagrams/segmentation:latest
-    ports:
-      - "8081:8081"
-    volumes:
-      - ./image-segmentation/models/yolo11x-seg-200epochs-100images.onnx:/app/model.onnx:ro
-    environment:
-      - MODEL_DOWNLOAD_URL=${MODEL_DOWNLOAD_URL:-}
+      dockerfile: Dockerfile.frontend
+    image: bananagrams/frontend:latest
+    depends_on:
+      - solver
+      - segmentation
     restart: unless-stopped
 
   solver:
@@ -17,18 +18,22 @@ services:
       context: .
       dockerfile: Dockerfile.solver
     image: bananagrams/solver:latest
-    ports:
-      - "8080:8080"
     restart: unless-stopped
 
-  frontend:
+  segmentation:
     build:
       context: .
-      dockerfile: Dockerfile.frontend
-    image: bananagrams/frontend:latest
-    ports:
-      - "3000:3000"
-    depends_on:
-      - solver
-      - segmentation
+      dockerfile: Dockerfile.segmentation
+    image: bananagrams/segmentation:latest
+    environment:
+      # Fetched once into the volume, then reused across restarts and rebuilds.
+      - MODEL_DOWNLOAD_URL=${MODEL_DOWNLOAD_URL:-https://github.com/Zawaer/bananagrams-assistant/releases/download/models/yolo11x-seg-200epochs-100images.onnx}
+      - MODEL_CACHE_PATH=/models/model.onnx
+      # Drop the model from memory after this long without a photo.
+      - IDLE_UNLOAD_SECONDS=${IDLE_UNLOAD_SECONDS:-600}
+    volumes:
+      - models:/models
     restart: unless-stopped
+
+volumes:
+  models:

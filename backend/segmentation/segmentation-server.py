@@ -1,13 +1,15 @@
 import base64
 import os
-import shutil
+import signal
+import threading
+import time
+import urllib.request
 
-import cv2
-import numpy as np
-import supervision as sv
 from flask import Flask, jsonify, request
 from flask_cors import CORS
-from ultralytics import YOLO
+
+# cv2, numpy, supervision and ultralytics are imported inside detect(): see
+# MODEL LOADING below for why the idle process keeps them out of memory.
 
 app = Flask(__name__)
 CORS(app)
@@ -68,54 +70,98 @@ CLASS_NAME_TO_LABEL = {
     "y": "Y",
 }
 
-# Load ONNX model at startup
-# If MODEL_DOWNLOAD_URL is set, download from there (priority for production)
-# Otherwise try local paths (for development)
+# ──── MODEL LOADING ────
+# The model is loaded on the first /detect, not at import, and dropped again
+# after IDLE_UNLOAD_SECONDS without a request. Torch, ultralytics and a loaded
+# YOLO11x hold well over a gigabyte between them, which is a lot to sit on for
+# an app used now and then. Unloading is done by ending the worker process:
+# Python rarely hands freed memory back to the OS, so the only reliable way to
+# get it back is to exit. Gunicorn starts a fresh worker straight away, and that
+# worker has imported none of the heavy libraries.
+#
+# Where the model comes from, in order:
+#   MODEL_PATH                set explicitly
+#   ./model.onnx              mounted by docker-compose for local use
+#   ../../image-segmentation/models/...   running from the repo checkout
+#   MODEL_DOWNLOAD_URL        fetched once into MODEL_CACHE_PATH and kept there
 
-model_url = os.environ.get("MODEL_DOWNLOAD_URL")
+MODEL_URL = os.environ.get("MODEL_DOWNLOAD_URL")
+MODEL_CACHE_PATH = os.environ.get("MODEL_CACHE_PATH", "/tmp/model.onnx")
+IDLE_UNLOAD_SECONDS = int(os.environ.get("IDLE_UNLOAD_SECONDS", "0"))  # 0 = never
 
-if model_url:
-    print(f"MODEL_DOWNLOAD_URL set, downloading from {model_url}...")
-    import urllib.request
-    
-    # Download into /tmp so it never collides with a model mounted at ./model.onnx
-    model_path = "/tmp/model.onnx"
-    
-    # Download model
-    try:
-        print(f"Downloading model to {model_path}...")
-        urllib.request.urlretrieve(model_url, model_path)
-        print("Model downloaded successfully.")
-    except Exception as e:
-        print(f"Error downloading model: {e}")
-        raise
-    
-    model = YOLO(model_path, task="segment")
-    print("Model loaded successfully.")
-else:
-    # Fallback to local paths for development
-    MODEL_PATHS = [
-        "./model.onnx",  # Docker volume or current directory
-        "../../image-segmentation/models/yolo11x-seg-200epochs-100images.onnx",  # Local development
-    ]
+LOCAL_MODEL_PATHS = [
+    os.environ.get("MODEL_PATH", ""),
+    "./model.onnx",
+    "../../image-segmentation/models/yolo11x-seg-200epochs-100images.onnx",
+]
 
-    MODEL_PATH = None
-    for path in MODEL_PATHS:
-        if os.path.exists(path):
-            MODEL_PATH = path
-            break
+_model = None
+_model_lock = threading.Lock()
+_download_lock = threading.Lock()
+_in_flight = 0
+_last_used = time.monotonic()
 
-    if MODEL_PATH:
-        print(f"Loading ONNX model from: {os.path.abspath(MODEL_PATH)}")
-        model = YOLO(MODEL_PATH, task="segment")
-        print("Model loaded successfully.")
-    else:
-        raise RuntimeError(
-            "Model file not found! "
-            "For local development: Ensure ../../image-segmentation/models/yolo11x-seg-200epochs-100images.onnx exists. "
-            "For production: Set MODEL_DOWNLOAD_URL env var to download from GitHub releases. "
-            "See DEPLOYMENT.md for instructions."
-        )
+
+def _download_model():
+    """Fetch the model into MODEL_CACHE_PATH unless it is already there."""
+    with _download_lock:
+        if os.path.exists(MODEL_CACHE_PATH):
+            return MODEL_CACHE_PATH
+        os.makedirs(os.path.dirname(MODEL_CACHE_PATH) or ".", exist_ok=True)
+        partial = MODEL_CACHE_PATH + ".part"
+        print(f"Downloading model from {MODEL_URL}...", flush=True)
+        urllib.request.urlretrieve(MODEL_URL, partial)
+        # Rename only once complete, so an interrupted download is never
+        # mistaken for a model on the next start.
+        os.replace(partial, MODEL_CACHE_PATH)
+        print(f"Model saved to {MODEL_CACHE_PATH}", flush=True)
+        return MODEL_CACHE_PATH
+
+
+def _find_model_path():
+    for path in LOCAL_MODEL_PATHS:
+        if path and os.path.exists(path):
+            return path
+    if MODEL_URL:
+        return _download_model()
+    raise RuntimeError(
+        "Model file not found! "
+        "For local development: Ensure ../../image-segmentation/models/yolo11x-seg-200epochs-100images.onnx exists. "
+        "For production: Set MODEL_DOWNLOAD_URL to download it from the GitHub release."
+    )
+
+
+def get_model():
+    global _model
+    with _model_lock:
+        if _model is None:
+            path = _find_model_path()
+            print(f"Loading ONNX model from: {os.path.abspath(path)}", flush=True)
+            from ultralytics import YOLO  # heavy: pulls in torch
+
+            _model = YOLO(path, task="segment")
+            print("Model loaded successfully.", flush=True)
+        return _model
+
+
+def _unload_when_idle():
+    while True:
+        time.sleep(30)
+        with _model_lock:
+            idle = time.monotonic() - _last_used
+            if _model is not None and _in_flight == 0 and idle > IDLE_UNLOAD_SECONDS:
+                print(f"Idle for {int(idle)}s, exiting worker to free the model's memory.", flush=True)
+                os.kill(os.getpid(), signal.SIGTERM)
+                return
+
+
+if IDLE_UNLOAD_SECONDS > 0:
+    threading.Thread(target=_unload_when_idle, daemon=True).start()
+
+# Fetch the model in the background at startup, so the first photo after a
+# deploy does not also wait for a 250 MB download.
+if MODEL_URL and not any(p and os.path.exists(p) for p in LOCAL_MODEL_PATHS):
+    threading.Thread(target=_download_model, daemon=True).start()
 
 
 @app.route("/health", methods=["GET"])
@@ -129,8 +175,22 @@ def detect():
     Accepts a multipart image upload (field name: "image").
     Returns JSON with timing, thresholds, and detection results.
     """
-    import time
-    
+    global _in_flight, _last_used
+    with _model_lock:
+        _in_flight += 1
+    try:
+        return _detect()
+    finally:
+        with _model_lock:
+            _in_flight -= 1
+            _last_used = time.monotonic()
+
+
+def _detect():
+    import cv2
+    import numpy as np
+    import supervision as sv
+
     total_start = time.time()
     
     if "image" not in request.files:
@@ -150,6 +210,7 @@ def detect():
     preprocess_time_ms = round((time.time() - preprocess_start) * 1000)
 
     # ──── INFERENCE ────
+    model = get_model()
     inference_start = time.time()
     results = model(image)
     detections = sv.Detections.from_ultralytics(results[0])

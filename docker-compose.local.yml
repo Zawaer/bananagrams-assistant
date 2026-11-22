@@ -1,0 +1,8 @@
+# Running on your own machine: the whole app on one port.
+#   docker compose -f docker-compose.yml -f docker-compose.local.yml up --build -d
+# (`make up` does exactly this.)
+
+services:
+  frontend:
+    ports:
+      - "${PORT:-3000}:80"

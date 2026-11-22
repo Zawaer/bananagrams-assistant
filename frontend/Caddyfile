@@ -1,0 +1,29 @@
+# Serves the static frontend and proxies the backends, so the whole app is a
+# single origin. Used by Dockerfile.frontend.
+{
+	admin off
+	auto_https off
+}
+
+:80 {
+	encode gzip
+
+	handle_path /api/solver/* {
+		reverse_proxy solver:8080
+	}
+
+	handle_path /api/detect/* {
+		# The first detection after idle loads the model, which takes a while.
+		reverse_proxy segmentation:8081 {
+			transport http {
+				read_timeout 5m
+			}
+		}
+	}
+
+	handle {
+		root * /srv
+		try_files {path} {path}.html {path}/
+		file_server
+	}
+}

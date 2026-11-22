@@ -30,20 +30,21 @@ docker compose version
 docker buildx version
 ```
 
-Once up:
+Once up, the app is at http://localhost:3000. The backends sit behind it:
 
-- Frontend  http://localhost:3000
-- Solver    http://localhost:8080/health
-- Detection http://localhost:8081/health
+- Solver    http://localhost:3000/api/solver/health
+- Detection http://localhost:3000/api/detect/health
+
+Plain `docker compose up` (without `-f docker-compose.local.yml`) publishes
+nothing; that base file is shared with the homelab deployment.
 
 Using it from a phone
 
 - Open `http://<your-machine-ip>:3000` on any device that can reach the
   machine: the same LAN, or a VPN such as Tailscale, where the address is the
   node name instead.
-- No configuration needed. The frontend derives the backend URLs from the
-  hostname it was loaded on, so whatever address you use for the page is the
-  one it uses for the solver and the detection server.
+- No configuration needed: the page calls the backends on its own address,
+  under `/api`.
 - Use "Upload photo" rather than "Open camera". On iOS and Android that
   file picker offers "Take Photo", so you still shoot the tiles right there;
   it just goes through the system camera instead of a preview inside the page.
@@ -55,20 +56,13 @@ localhost. On the machine running it, `http://localhost:3000` qualifies and
 the in-page camera works. From a phone, `http://192.168.x.x:3000` does not,
 so the app says so and points you at the upload path.
 
-Putting the page behind HTTPS is not quite a one-liner, because it moves the
-problem rather than solving it: an HTTPS page may not call plain-HTTP
-backends, so the solver and detection server have to be served over HTTPS
-too, and the frontend has to be told where they are. There are
-`NEXT_PUBLIC_SOLVER_SERVER_URL` and `NEXT_PUBLIC_DETECTION_SERVER_URL` for
-that (see `frontend/.env.example`); note they are read at build time, so a
-Docker image has to be rebuilt to change them. With Tailscale that means a
-`tailscale serve` for each of the three, on its own HTTPS port.
-
-Not worth it just to skip a tap in the file picker, but the option is there.
+Because everything is on one origin, putting that one port behind any HTTPS
+reverse proxy (Caddy, `tailscale serve`) is enough to get the in-page camera;
+the homelab deployment does exactly that.
 
 Notes on model file:
-- The segmentation service expects an ONNX model at `image-segmentation/models/yolo11x-seg-200epochs-100images.onnx`.
-- Either mount it (the compose file does this) or set `MODEL_DOWNLOAD_URL` env var when starting.
+- Under Docker the model is downloaded from the GitHub release into the `models` volume on first start (override with `MODEL_DOWNLOAD_URL`).
+- Run by hand, the server looks for `image-segmentation/models/yolo11x-seg-200epochs-100images.onnx`, or set `MODEL_PATH`.
 
 Manual (no Docker)
 

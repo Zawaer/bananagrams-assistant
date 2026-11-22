@@ -1,0 +1,19 @@
+# Homelab deployment: no published ports; the frontend joins the shared proxy
+# network and is reached as https://bananagrams.internal. Selected with
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.homelab.yml
+# in the deployment's .env.
+
+services:
+  frontend:
+    container_name: bananagrams
+    networks:
+      - default
+      - homelab_net
+
+  segmentation:
+    # Ceiling for the moment the model is loaded; idle it uses a few tens of MB.
+    mem_limit: 4g
+
+networks:
+  homelab_net:
+    external: true

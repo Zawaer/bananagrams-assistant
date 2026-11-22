@@ -37,5 +37,7 @@ COPY backend/segmentation/segmentation-server.py ./
 
 EXPOSE 8081
 
-# Use gunicorn production server instead of Flask dev server
-CMD ["gunicorn", "--bind", "0.0.0.0:8081", "--workers", "2", "--timeout", "120", "segmentation-server:app"]
+# One worker: every worker holds its own copy of the model, and this serves one
+# person. The long timeout covers the first request after idle, which imports
+# torch and loads the model (and, on a fresh volume, may wait for the download).
+CMD ["gunicorn", "--bind", "0.0.0.0:8081", "--workers", "1", "--timeout", "300", "segmentation-server:app"]

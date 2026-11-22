@@ -1,6 +1,6 @@
 # Thin wrapper over docker compose for the three services.
-# Override the compose command if yours differs: make up COMPOSE="docker-compose"
-COMPOSE ?= docker compose
+# Override the compose command if yours differs: make up COMPOSE="docker-compose -f docker-compose.yml -f docker-compose.local.yml"
+COMPOSE ?= docker compose -f docker-compose.yml -f docker-compose.local.yml
 
 .PHONY: help up down build rebuild logs ps clean
 
@@ -9,9 +9,7 @@ help: ## Show the available targets
 
 up: ## Build if needed and start everything in the background
 	$(COMPOSE) up --build -d
-	@echo "frontend  http://localhost:3000"
-	@echo "solver    http://localhost:8080/health"
-	@echo "detection http://localhost:8081/health"
+	@echo "app  http://localhost:3000"
 
 down: ## Stop and remove the containers
 	$(COMPOSE) down

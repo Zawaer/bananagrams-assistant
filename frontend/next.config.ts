@@ -1,9 +1,10 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Emit a self-contained server bundle so the Docker image can ship just
-  // the build output instead of the whole node_modules tree.
-  output: "standalone",
+  // The app is one client-side page, so it builds to plain static files
+  // (in out/) and needs no Node server at run time. Dockerfile.frontend
+  // serves them with Caddy.
+  output: "export",
 };
 
 export default nextConfig;
