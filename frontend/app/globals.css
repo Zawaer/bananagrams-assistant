@@ -1072,3 +1072,49 @@ kbd {
 }
 .chip-label { font-weight: 650; line-height: 1.2; }
 .chip-ex { font-size: 0.76rem; font-weight: 500; opacity: 0.65; line-height: 1.2; }
+
+/* ── Definition card ─────────────────────────────────────────────────────── */
+
+.def-card {
+  position: relative;
+  overflow: hidden;
+  padding: 16px 18px 18px 22px;
+  animation: fade-up 0.22s ease both;
+}
+.def-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 5px;
+  background: var(--banana);
+}
+.def-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1.5px solid var(--line);
+}
+.def-card-head .define-source {
+  margin: 0;
+  align-self: auto;
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+  text-decoration: none;
+}
+.def-card-head .define-source:hover { color: var(--ink); text-decoration: underline; }
+.def-card .define { padding-top: 0; gap: 16px; }
+.def-card .define-entry { gap: 8px; }
+.def-card .define-entry + .define-entry { padding-top: 16px; border-top: 1.5px dashed var(--line); }
+.def-card .define-word { font-size: 1.6rem; line-height: 1.1; letter-spacing: -0.02em; }
+.def-card .define-pos { font-size: 0.95rem; }
+.def-card .define-text { font-size: 1rem; line-height: 1.5; }
+.def-card .define-examples {
+  margin-top: 2px;
+  padding-left: 11px;
+  border-left: 2.5px solid var(--line);
+  font-size: 0.9rem;
+}
+.def-card .define-senses { gap: 10px; }

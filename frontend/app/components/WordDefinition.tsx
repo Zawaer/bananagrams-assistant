@@ -42,7 +42,19 @@ export function WordDefinition({ word }: { word: string }) {
   }, [key, attempt]);
 
   return (
-    <section className="define" aria-live="polite">
+    <section className="card def-card" aria-live="polite">
+      <header className="def-card-head">
+        <span className="label">Definition</span>
+        <a
+          className="define-source"
+          href={`https://www.kielitoimistonsanakirja.fi/#/${encodeURIComponent(key)}`}
+          target="_blank"
+          rel="noreferrer"
+        >
+          Kielitoimiston sanakirja ↗
+        </a>
+      </header>
+      <div className="define">
       {current.status === "loading" && (
         <p className="define-loading hint">
           <span className="define-spinner" aria-hidden /> Looking up {key}
@@ -75,16 +87,7 @@ export function WordDefinition({ word }: { word: string }) {
             <strong className="define-missing">{key}</strong> is not in the dictionary as its own word.
           </p>
         ))}
-      {current.status !== "loading" && (
-        <a
-          className="define-source"
-          href={`https://www.kielitoimistonsanakirja.fi/#/${encodeURIComponent(key)}`}
-          target="_blank"
-          rel="noreferrer"
-        >
-          Kielitoimiston sanakirja
-        </a>
-      )}
+      </div>
     </section>
   );
 }

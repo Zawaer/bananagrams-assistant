@@ -1142,12 +1142,12 @@ function SolvedView({
                 Ban word
               </button>
             </div>
-            <WordDefinition word={picked.word} />
           </>
         ) : (
           <p className="hint">Tap a word to see what it means, or to ban it.</p>
         )}
       </div>
+      {picked && <WordDefinition word={picked.word} />}
     </>
   );
 }
