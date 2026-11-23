@@ -329,6 +329,8 @@ with no extra configuration. See [RUNNING.md](RUNNING.md) for more detail.
 
 `solved: false` comes back with an empty grid when no packing is found within the search budget.
 
+Add `"mode": "common"` to solve with everyday words only (the app's *Legit mode*): words of at most 7 letters that are among the 50,000 most frequent Finnish words. The list is `backend/wordlist-parser/wordlist-common.txt`, built by `make-common-wordlist.py` from [FrequencyWords](https://github.com/hermitdave/FrequencyWords) (CC BY-SA 4.0). On random 15- and 21-tile hands it solves as often as the full dictionary.
+
 The request body may use raw UTF-8 or `\uXXXX` escapes for `ä` and `ö`. Both decode correctly, so clients like Python's `json.dumps` (which escapes non-ASCII by default) work as well as the browser's `JSON.stringify`.
 
 ### Segmentation (port 8081)

@@ -631,3 +631,56 @@ kbd {
 .ov-tile.is-selected circle { --c: var(--banana); }
 
 .photo-caption { padding: 10px 16px 14px; }
+
+/* ── Legit mode switch ───────────────────────────────────────────────────── */
+
+.legit {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  width: 100%;
+  padding: 12px 0 0;
+  margin-top: 2px;
+  border: none;
+  border-top: 1.5px solid var(--line);
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.legit-compact {
+  padding: 10px 14px;
+  margin: 0;
+  border: 1.5px solid var(--line);
+  border-radius: 12px;
+  background: var(--card);
+}
+
+.legit-text { display: flex; flex-direction: column; gap: 2px; }
+.legit-title { font-weight: 700; font-size: 0.95rem; }
+.legit-sub { font-size: 0.8rem; color: var(--ink-soft); }
+
+.switch {
+  position: relative;
+  flex-shrink: 0;
+  width: 46px;
+  height: 28px;
+  border-radius: 999px;
+  background: var(--paper-deep);
+  border: 2px solid var(--ink);
+  transition: background 150ms ease;
+}
+.switch-on { background: var(--banana); }
+.switch-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  background: var(--card);
+  border: 2px solid var(--ink);
+  transition: transform 160ms cubic-bezier(0.3, 1.4, 0.5, 1);
+}
+.switch-on .switch-knob { transform: translateX(18px); }

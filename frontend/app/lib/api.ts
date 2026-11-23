@@ -89,12 +89,19 @@ export async function detect(
   }
 }
 
-export async function solve(letters: string[], signal?: AbortSignal): Promise<SolveResult> {
+/** "common" (legit mode) solves with everyday words of up to 7 letters only. */
+export type WordMode = "common" | "full";
+
+export async function solve(
+  letters: string[],
+  mode: WordMode,
+  signal?: AbortSignal
+): Promise<SolveResult> {
   try {
     const res = await fetch(`${SOLVER_SERVER}/solve`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ letters: letters.join("") }),
+      body: JSON.stringify({ letters: letters.join(""), mode }),
       signal,
     });
     if (!res.ok) throw new Error(`The solver failed (${res.status}).`);

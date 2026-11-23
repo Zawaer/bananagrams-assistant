@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { detect, solve, warmDetector, type SolveResult } from "./lib/api";
+import { detect, solve, warmDetector, type SolveResult, type WordMode } from "./lib/api";
 import { PhotoOverlay, type Photo } from "./components/PhotoOverlay";
 import { extractWords, formatMs } from "./lib/grid";
 import { awkwardness, removeOne, sortLetters } from "./lib/letters";
@@ -48,6 +48,7 @@ const PRESETS = [10, 15, 21];
 const DRAW_COUNT = 3;
 const DOUBTFUL = 0.9;
 const STORAGE_KEY = "bananagrams-game-v2";
+const LEGIT_KEY = "bananagrams-legit";
 
 let nextId = 1;
 const toTiles = (letters: string[], conf?: number[]): HandTile[] =>
@@ -92,6 +93,14 @@ export default function Home() {
   const [showPhoto, setShowPhoto] = useState(false);
   const [customOpen, setCustomOpen] = useState(false);
 
+  // Legit mode: solve with everyday words only, so the grid doesn't give the
+  // game away with a 16-letter compound. A preference, kept across games.
+  const [legit, setLegit] = useState(true);
+  const mode: WordMode = legit ? "common" : "full";
+  const modeRef = useRef(mode);
+  modeRef.current = mode;
+  useEffect(() => setLegit(localStorage.getItem(LEGIT_KEY) !== "0"), []);
+
   // Dump helper
   const [dumpCheck, setDumpCheck] = useState<DumpCheck | null>(null);
   const dumpAbort = useRef<AbortController | null>(null);
@@ -132,7 +141,7 @@ export default function Home() {
   }, [phase]);
 
   const letters = lettersOf(game.hand);
-  const handKey = sortLetters(letters).join("");
+  const handKey = `${mode}:${sortLetters(letters).join("")}`;
 
   // ==========================================================================
   // Actions
@@ -261,14 +270,22 @@ export default function Home() {
     dumpAbort.current?.abort();
     setDumpCheck(null);
     try {
-      const result = await solve(hand);
-      setGame((g) => ({ ...g, solution: result, solvedFor: sortLetters(hand).join("") }));
+      const result = await solve(hand, modeRef.current);
+      setGame((g) => ({ ...g, solution: result, solvedFor: `${modeRef.current}:${sortLetters(hand).join("")}` }));
       setPhase("result");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Solving failed.");
       setPhase("hand");
     }
   }, []);
+
+  // Flipping the mode on the result screen re-solves the same hand at once.
+  const toggleLegit = (on: boolean) => {
+    setLegit(on);
+    localStorage.setItem(LEGIT_KEY, on ? "1" : "0");
+    modeRef.current = on ? "common" : "full";
+    if (phase === "result" && letters.length >= 2) runSolve(letters);
+  };
 
   // For each distinct letter, try solving the hand without it. A letter whose
   // removal leaves a hand that fits is a safe dump: whatever three come back,
@@ -288,7 +305,7 @@ export default function Home() {
       while (queue.length && !ctrl.signal.aborted) {
         const letter = queue.shift()!;
         try {
-          const r = await solve(removeOne(hand, letter), ctrl.signal);
+          const r = await solve(removeOne(hand, letter), modeRef.current, ctrl.signal);
           if (r.solved) fits.push(letter);
         } catch {
           // A failed check just doesn't count as a fit.
@@ -410,7 +427,7 @@ export default function Home() {
               </div>
               <h1 className="title">What&apos;s in your hand?</h1>
               <p className="muted">
-                Snap your tiles and get a grid that uses every one of them.
+                Photograph your tiles and get a grid that uses all of them.
               </p>
             </div>
 
@@ -453,6 +470,7 @@ export default function Home() {
                 )}
               </div>
               <p className="hint">Used to check the photo didn&apos;t miss a tile.</p>
+              <LegitSwitch on={legit} onChange={toggleLegit} />
             </div>
 
             {error && <div className="alert alert-danger">{error}</div>}
@@ -504,7 +522,7 @@ export default function Home() {
               <p className="muted small">
                 {elapsed < 4
                   ? "This usually takes a couple of seconds."
-                  : "The tile reader naps when nobody's using it. Waking it up takes about 20 seconds; after that it's quick."}
+                  : "Loading the model after a break. The first photo takes about 20 seconds."}
               </p>
             </div>
             <button type="button" className="btn btn-secondary" onClick={cancelScan}>
@@ -521,8 +539,8 @@ export default function Home() {
                 <h2 className="title-sm">Your tiles</h2>
                 <p className="muted small">
                   {count
-                    ? "Check them against the real ones. Tap a tile to fix it."
-                    : "Tap letters below to add your tiles."}
+                    ? "Tap a tile to fix it."
+                    : "Add your tiles with +."}
                 </p>
               </div>
               <CountBadge count={count} expected={expected} />
@@ -553,8 +571,7 @@ export default function Home() {
               </div>
               {doubtfulCount > 0 && (
                 <p className="hint mt-3">
-                  <span className="dot-inline" /> {doubtfulCount === 1 ? "This tile was" : "These tiles were"} hard
-                  to read. Worth a second look.
+                  <span className="dot-inline" /> Hard to read, check{doubtfulCount === 1 ? " it" : " these"}.
                 </p>
               )}
             </div>
@@ -562,7 +579,7 @@ export default function Home() {
             {game.photo && (
               <div className="card card-flush">
                 <button type="button" className="disclosure" onClick={() => setShowPhoto((s) => !s)}>
-                  <span>What the camera saw</span>
+                  <span>Photo</span>
                   <span className="muted">{showPhoto ? "Hide" : "Show"}</span>
                 </button>
                 {showPhoto && (
@@ -578,8 +595,8 @@ export default function Home() {
                       onSelect={setSelected}
                     />
                     <p className="hint photo-caption">
-                      Tap a tile on the photo to fix it.
-                      {doubtfulCount > 0 && " Red ones were hard to read."}
+                      Tap a tile to fix it.
+                      {doubtfulCount > 0 && " Dashed outline: hard to read."}
                     </p>
                   </>
                 )}
@@ -622,7 +639,7 @@ export default function Home() {
                 <Tile key={t.id} letter={t.letter} size={34} className="tile-bob" style={{ animationDelay: `${i * 70}ms` }} />
               ))}
             </div>
-            <div className="strong">Fitting {count} tiles together…</div>
+            <div className="strong">Solving {count} tiles…</div>
             <p className="muted small">Hard hands can take up to 5 seconds.</p>
           </section>
         )}
@@ -630,16 +647,15 @@ export default function Home() {
         {/* ── RESULT ────────────────────────────────────────────────────── */}
         {phase === "result" && solution && solutionCurrent && (
           <section className="stack-lg fade-in">
+            <LegitSwitch on={legit} onChange={toggleLegit} compact />
             {solution.solved ? (
               <SolvedView solution={solution} count={count} />
             ) : (
               <>
                 <div className="center stack-sm">
-                  <div className="badge badge-danger">No grid found</div>
-                  <h2 className="title-sm">These {count} tiles don&apos;t fit together</h2>
+                  <h2 className="title-sm">No grid uses all {count} tiles</h2>
                   <p className="muted small">
-                    Time to dump: put one tile back in the pile and take {DRAW_COUNT}. If a tile was misread,
-                    fix it first.
+                    Dump one and take {DRAW_COUNT}, or fix a misread tile first.
                   </p>
                 </div>
 
@@ -653,8 +669,7 @@ export default function Home() {
                         ))}
                       </div>
                       <p className="hint">
-                        Without {dumpCheck.fits.length === 1 ? "this tile" : "any one of these"}, the rest of your
-                        hand makes a full grid. {dumpCheck.fits.length === 1 ? "Tap it" : "Tap one"} to dump it.
+                        The rest of your hand fits without {dumpCheck.fits.length === 1 ? "it" : "any one of these"}.
                       </p>
                     </>
                   ) : dumpCheck?.running ? null : (
@@ -668,7 +683,7 @@ export default function Home() {
                           ))}
                       </div>
                       <p className="hint">
-                        No single dump makes the rest fit, so these are just the hardest tiles to place.
+                        No single dump makes the rest fit. These are the hardest to place.
                       </p>
                     </>
                   )}
@@ -853,7 +868,7 @@ export default function Home() {
             ))}
           </div>
           {dumpCheck && dumpCheck.fits.length > 0 && (
-            <p className="hint">Highlighted: the rest of your hand fits without it.</p>
+            <p className="hint">Yellow: the rest fits without it.</p>
           )}
         </div>
       </Sheet>
@@ -870,10 +885,9 @@ function SolvedView({ solution, count }: { solution: SolveResult; count: number 
   return (
     <>
       <div className="center stack-sm">
-        <div className="badge badge-success">All {count} tiles placed</div>
-        <h2 className="title-sm">Every tile fits. Lay it out like this.</h2>
+        <h2 className="title-sm">All {count} tiles placed</h2>
         <p className="muted small">
-          {words.across.length + words.down.length} words, found in {formatMs(solution.time_ms)}
+          {words.across.length + words.down.length} words · {formatMs(solution.time_ms)}
         </p>
       </div>
       <div className="board">
@@ -899,6 +913,36 @@ function SolvedView({ solution, count }: { solution: SolveResult; count: number 
         )}
       </div>
     </>
+  );
+}
+
+function LegitSwitch({
+  on,
+  onChange,
+  compact,
+}: {
+  on: boolean;
+  onChange: (on: boolean) => void;
+  compact?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      className={compact ? "legit legit-compact" : "legit"}
+      onClick={() => onChange(!on)}
+    >
+      <span className="legit-text">
+        <span className="legit-title">Legit mode</span>
+        <span className="legit-sub">
+          {on ? "Everyday words, 7 letters max" : "Any word in the dictionary"}
+        </span>
+      </span>
+      <span className={on ? "switch switch-on" : "switch"} aria-hidden>
+        <span className="switch-knob" />
+      </span>
+    </button>
   );
 }
 

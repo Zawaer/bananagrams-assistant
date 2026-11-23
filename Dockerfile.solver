@@ -17,10 +17,12 @@ COPY backend/solver/solver.h backend/solver/utils.h backend/solver/main.cpp back
 
 # Copy wordlist
 COPY backend/wordlist-parser/wordlist.txt ./wordlist.txt
+# Everyday words only, for "common" (legit) mode
+COPY backend/wordlist-parser/wordlist-common.txt ./wordlist-common.txt
 
 # Build
 RUN mkdir -p build && cd build && cmake .. && make
 
 EXPOSE 8080
 
-CMD ["./build/solver-server", "./wordlist.txt"]
+CMD ["./build/solver-server", "./wordlist.txt", "./wordlist-common.txt"]

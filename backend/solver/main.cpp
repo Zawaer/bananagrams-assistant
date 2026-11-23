@@ -10,11 +10,16 @@
 #include <netinet/in.h>
 #include <unistd.h>
 
+#include <memory>
+
 #include "solver.h"
 #include "utils.h"
 
 static const int PORT = 8080;
 static WordUtil* g_wordUtil = nullptr;
+// Optional second dictionary of everyday words, used when a request asks for
+// "mode": "common". Null when the server was started without one.
+static WordUtil* g_commonWordUtil = nullptr;
 
 // ============================================================================
 // Minimal JSON helpers (no external dependency)
@@ -277,7 +282,11 @@ void handleClient(int client_fd)
         utils::Timer timer;
         timer.start();
 
-        Board board(*g_wordUtil);
+        // "common" mode solves with everyday words only, so the grid looks
+        // like something a person would build. Falls back to the full list if
+        // the server has no common list loaded.
+        bool common = jsonGetString(body, "mode") == "common" && g_commonWordUtil;
+        Board board(common ? *g_commonWordUtil : *g_wordUtil);
         board.hand = Hand(utils::stringToWString(letters));
         board.reset();
 
@@ -327,6 +336,15 @@ int main(int argc, char* argv[])
     std::cout << "Word list loaded in " << timer.getMs() << " ms" << std::endl;
 
     g_wordUtil = &wordUtil;
+
+    // argv[2]: the everyday-words list for "common" mode.
+    std::unique_ptr<WordUtil> commonWordUtil;
+    if (argc > 2)
+    {
+        std::cout << "Loading common word list from: " << argv[2] << std::endl;
+        commonWordUtil = std::make_unique<WordUtil>(argv[2]);
+        g_commonWordUtil = commonWordUtil.get();
+    }
 
     // Create socket
     int server_fd = socket(AF_INET, SOCK_STREAM, 0);
