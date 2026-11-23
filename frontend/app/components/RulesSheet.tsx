@@ -3,9 +3,12 @@
 import {
   CHOICES,
   CLASSES,
+  DEFAULT_RULES,
+  STYLES,
   MAX_LEN,
   MIN_LEN,
   type Rules,
+  type Style,
   type WordClass,
 } from "../lib/rules";
 import { Sheet } from "./Sheet";
@@ -118,7 +121,35 @@ export function RulesSheet({
               );
             })}
           </div>
-          <p className="hint">Other: numerals and the odd adverb.</p>
+          <p className="hint">
+            Pronouns, adverbs, conjunctions and interjections are off by default: minä, kyllä, ja, ei, hei.
+          </p>
+        </section>
+
+        <section className="stack-sm">
+          <div className="label">Word style</div>
+          <div className="chips">
+            {STYLES.map((st) => {
+              const styles = { ...DEFAULT_RULES.styles, ...rules.styles };
+              const on = styles[st.value];
+              return (
+                <button
+                  key={st.value}
+                  type="button"
+                  className={on ? "chip-btn chip-on" : "chip-btn"}
+                  aria-pressed={on}
+                  title={st.example}
+                  onClick={() => set({ styles: { ...styles, [st.value]: !on } as Record<Style, boolean> })}
+                >
+                  {st.label}
+                </button>
+              );
+            })}
+          </div>
+          <p className="hint">
+            From Kielitoimiston sanakirja&apos;s labels. Off means words that only exist in that style are left
+            out, e.g. slang: nisti, jäbä, darra.
+          </p>
         </section>
 
         <button

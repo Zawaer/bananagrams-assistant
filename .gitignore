@@ -10,3 +10,6 @@ __pycache__/
 
 # compiled solver binary - build it with the command in the README
 backend/solver/solver-server
+
+# Kielitoimiston sanakirja responses cached by make-ks-labels.py
+backend/wordlist-parser/ks-cache/

@@ -3,7 +3,13 @@
 One line per word in wordlist.txt:  word <TAB> classes <TAB> rank
   classes  word classes from the Kotus list, as letters:
            n = noun (substantiivi), v = verb, a = adjective, u = numeral,
-           o = anything else (adverbs, interjections, ...)
+           q = pronoun, b = adverb (kyllä, nyt, nopeasti),
+           c = conjunction, pre-/postposition or the negative verb (ja,
+               mutta, alla, ei), i = interjection (hei, joo),
+           o = anything else
+           A word that is also listed as a noun (minä "the self", mutta
+           "a but", ei "a no") keeps only its small-word class, so allowing
+           nouns doesn't let pronouns and particles in.
            p = flag: plural form (housut, hautajaiset, ajovalot), for the
                "no plurals" rule
            x = flag: abbreviation or letter-name word (tv, oy, ry), dropped
@@ -13,8 +19,13 @@ One line per word in wordlist.txt:  word <TAB> classes <TAB> rank
            github.com/hermitdave/FrequencyWords), or 0 if not in it.
            Only base forms match, since wordlist.txt has no inflections.
 
+  labels   (4th column) usage labels from Kielitoimiston sanakirja for words
+           with no standard meaning: each meaning's label set, joined by
+           "|" (see make-ks-labels.py, which writes ks-labels.tsv). Empty
+           for ordinary words.
+
 Legit mode keeps words with 0 < rank <= its threshold; the other rules
-filter on length and class.
+filter on length, class and labels.
 
 Usage:
   curl -LO https://raw.githubusercontent.com/hermitdave/FrequencyWords/master/content/2018/fi/fi_50k.txt
@@ -29,10 +40,17 @@ here = Path(__file__).parent
 CLASS = {
     "substantiivi": "n",
     "verbi": "v",
-    "kieltoverbi": "v",
     "adjektiivi": "a",
     "numeraali": "u",
+    "pronomini": "q",
+    "adverbi": "b",
+    "konjunktio": "c",
+    "prepositio": "c",
+    "postpositio": "c",
+    "kieltoverbi": "c",
+    "interjektio": "i",
 }
+SMALL = set("qbci")
 
 words = (here / "wordlist.txt").read_text(encoding="utf-8").split()
 
@@ -68,12 +86,20 @@ for i, line in enumerate(Path(sys.argv[1]).read_text(encoding="utf-8").splitline
     if line.strip():
         rank.setdefault(line.split()[0], i)
 
+ks_labels: dict[str, str] = {}
+if (here / "ks-labels.tsv").exists():
+    for line in (here / "ks-labels.tsv").read_text(encoding="utf-8").splitlines():
+        w, sets = line.split("\t")
+        ks_labels[w] = sets
+
 with open(here / "lexicon.tsv", "w", encoding="utf-8") as out:
     for w in words:
-        flags = "".join(sorted(classes.get(w, {"o"}))) + ("p" if is_plural(w) else "")
-        # The only two-letter words in the list besides "ei" are
-        # abbreviations and slang: bi, id, it, oy, ry, tv.
-        if len(w) == 2 and w != "ei":
+        cls = classes.get(w, {"o"})
+        if cls & SMALL:
+            cls = cls - {"n"}
+        flags = "".join(sorted(cls)) + ("p" if is_plural(w) else "")
+        # Abbreviations and letter-name words the Kotus list has as nouns.
+        if w in {"bi", "id", "it", "oy", "ry", "tv"}:
             flags += "x"
-        out.write(f"{w}\t{flags}\t{rank.get(w, 0)}\n")
+        out.write(f"{w}\t{flags}\t{rank.get(w, 0)}\t{ks_labels.get(w, '')}\n")
 print(f"{len(words)} words written to lexicon.tsv")

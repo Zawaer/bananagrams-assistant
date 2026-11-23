@@ -35,6 +35,10 @@ struct LexEntry
     std::wstring word;
     std::string flags;  // n v a u o word classes, p = plural, x = abbreviation
     int rank;           // frequency rank, 0 = not among the common words
+    // Usage labels for words with no standard meaning: one label set per
+    // meaning (k colloquial, s slang, r old/rare, d derogatory, m dialect).
+    // Empty for ordinary words.
+    std::vector<std::string> meanings;
 };
 
 static std::vector<LexEntry> g_lexicon;
@@ -50,12 +54,13 @@ struct Rules
     int max_len = 99;
     std::string classes;       // allowed classes; empty = all
     bool plurals = true;
+    std::string labels = "ksrdm";  // allowed usage labels
     std::vector<std::wstring> banned;
 
     std::string key() const
     {
         std::ostringstream k;
-        k << max_rank << '|' << min_len << '|' << max_len << '|' << classes << '|' << plurals << '|';
+        k << max_rank << '|' << min_len << '|' << max_len << '|' << classes << '|' << plurals << '|' << labels << '|';
         for (const auto& b : banned) k << utils::wstringToString(b) << ',';
         return k.str();
     }
@@ -67,6 +72,15 @@ struct Rules
         if (max_rank && (e.rank == 0 || e.rank > max_rank)) return false;
         if (max_rank && e.flags.find('x') != std::string::npos) return false;
         if (!plurals && e.flags.find('p') != std::string::npos) return false;
+        // A labelled word passes if one of its meanings uses only allowed labels.
+        if (!e.meanings.empty())
+        {
+            bool any = false;
+            for (const auto& m : e.meanings)
+                if (std::all_of(m.begin(), m.end(), [&](char c) { return labels.find(c) != std::string::npos; }))
+                { any = true; break; }
+            if (!any) return false;
+        }
         if (!classes.empty())
         {
             bool any = false;
@@ -94,6 +108,8 @@ static Rules parseRules(const std::string& body)
     r.max_len = std::max(r.min_len, toInt(jsonGetString(body, "max_len"), 99));
     r.classes = jsonGetString(body, "classes");
     r.plurals = jsonGetString(body, "plurals") != "0";
+    // "labels": the usage labels allowed; absent = all.
+    if (body.find("\"labels\"") != std::string::npos) r.labels = jsonGetString(body, "labels");
 
     std::wstring banned = utils::stringToWString(jsonGetString(body, "banned"));
     std::wstring cur;
@@ -150,11 +166,18 @@ static void loadLexicon(const std::string& path)
     while (std::getline(in, line))
     {
         std::wistringstream row(line);
-        std::wstring word, flags;
-        int rank = 0;
+        std::wstring word, flags, rankText, labelText;
         if (!std::getline(row, word, L'\t') || !std::getline(row, flags, L'\t')) continue;
-        row >> rank;
-        g_lexicon.push_back({word, utils::wstringToString(flags), rank});
+        std::getline(row, rankText, L'\t');
+        std::getline(row, labelText);
+        LexEntry e{word, utils::wstringToString(flags), toInt(utils::wstringToString(rankText), 0), {}};
+        std::string meanings = utils::wstringToString(labelText), cur;
+        for (char c : meanings + "|")
+        {
+            if (c == '|') { if (!cur.empty()) e.meanings.push_back(cur); cur.clear(); }
+            else if (!std::isspace((unsigned char)c)) cur += c;
+        }
+        g_lexicon.push_back(std::move(e));
     }
     std::cout << "Lexicon: " << g_lexicon.size() << " words" << std::endl;
 }

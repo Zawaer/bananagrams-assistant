@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { detect, solve, solveLive, warmDetector, type SolveFrame, type SolveResult } from "./lib/api";
 import { SearchViz } from "./components/SearchViz";
-import { DEFAULT_RULES, rulesKey, summarize, type Rules } from "./lib/rules";
+import { DEFAULT_RULES, rulesKey, summarize, withDefaults, type Rules } from "./lib/rules";
 import { RulesSheet } from "./components/RulesSheet";
 import { PhotoOverlay, type Photo } from "./components/PhotoOverlay";
 import { formatMs, wordRuns, type WordRun } from "./lib/grid";
@@ -117,7 +117,7 @@ export default function Home() {
   useEffect(() => {
     try {
       const saved = localStorage.getItem(RULES_KEY);
-      if (saved) setRules({ ...DEFAULT_RULES, ...JSON.parse(saved) });
+      if (saved) setRules(withDefaults(JSON.parse(saved)));
     } catch {
       // Unreadable rules fall back to the defaults.
     }

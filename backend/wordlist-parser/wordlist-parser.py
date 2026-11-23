@@ -8,8 +8,11 @@ from typing import List, Tuple, Optional
 # ============================================================================
 
 # Word categories to include
-ACCEPT_PRONOUNS = False         # pronominit (esim. sinä)
-ACCEPT_INTERJECTIONS = False    # huudahdukset (esim. auts)
+# Every class is in the list now: the solver's house rules decide per game
+# which classes count (see lexicon.tsv and make-lexicon.py).
+ACCEPT_PRONOUNS = True          # pronominit (esim. sinä)
+ACCEPT_INTERJECTIONS = True     # huudahdukset (esim. auts)
+ACCEPT_PARTICLES = True         # adverbit, konjunktiot, pre-/postpositiot, kieltoverbi (esim. kyllä, ja, ei)
 ACCEPT_NUMERALS = True              # numeraalit (esim. kolme)
 ACCEPT_SUBSTANTIVES = True      # substantiivit (esim. tuoli)
 ACCEPT_ADJECTIVES = True        # adjektiivit (esim. punainen)
@@ -58,9 +61,13 @@ def isValidCategory(category: str, inflection: str) -> bool:
     # Reject particles (adverbs, prepositions, conjunctions, interjections when used as particles)
     # except when they have special conjugation that makes them standalone words
     particle_markers = ['adverbi', 'prepositio', 'postpositio', 'konjunktio', 'interjektio']
+    if 'kieltoverbi' in category:
+        return ACCEPT_PARTICLES
     if any(marker in category for marker in particle_markers):
+        if ACCEPT_PARTICLES:
+            return True
         # Check combined forms like "adverbi + kieltoverbi"
-        if '+' in category or 'kieltoverbi' in category:
+        if '+' in category:
             return False
         # Interjections are okay as standalone exclamations when enabled
         if category == 'interjektio':
