@@ -37,15 +37,15 @@ export const CHOICES: { value: WordChoice; label: string; detail: string }[] = [
   { value: "strict", label: "Strict", detail: "Only very common words. Some hands need a dump to fit." },
 ];
 
-export const CLASSES: { value: WordClass; label: string; example?: string }[] = [
-  { value: "n", label: "Nouns" },
-  { value: "v", label: "Verbs" },
-  { value: "a", label: "Adjectives" },
+export const CLASSES: { value: WordClass; label: string; example: string }[] = [
+  { value: "n", label: "Nouns", example: "talo, kissa" },
+  { value: "v", label: "Verbs", example: "juosta, syödä" },
+  { value: "a", label: "Adjectives", example: "iso, punainen" },
   { value: "u", label: "Numerals", example: "kolme, sata" },
   { value: "q", label: "Pronouns", example: "minä, se, joka" },
   { value: "b", label: "Adverbs", example: "kyllä, nyt, nopeasti" },
   { value: "c", label: "Conjunctions & prepositions", example: "ja, mutta, alla, ei" },
-  { value: "i", label: "Interjections", example: "hei, joo" },
+  { value: "i", label: "Interjections", example: "hei, joo, moi" },
 ];
 
 /** Saved rules from before a class existed get that class's default. */
@@ -68,9 +68,9 @@ export function withDefaults(saved: Partial<Rules>): Rules {
 export const STYLES: { value: Style; label: string; example: string }[] = [
   { value: "k", label: "Colloquial", example: "paku, abi, isi" },
   { value: "s", label: "Slang", example: "nisti, jäbä, darra" },
-  { value: "r", label: "Old & rare", example: "ehtoo, ajastaika" },
-  { value: "d", label: "Derogatory", example: "akkamainen" },
-  { value: "m", label: "Dialect", example: "aatra" },
+  { value: "r", label: "Old & rare", example: "ajastaika, alinen" },
+  { value: "d", label: "Derogatory", example: "akkamainen, diletantti" },
+  { value: "m", label: "Dialect", example: "ehtoo, aatra" },
 ];
 
 export const MIN_LEN = 2;

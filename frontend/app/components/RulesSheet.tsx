@@ -116,13 +116,14 @@ export function RulesSheet({
                     set({ classes: { ...rules.classes, [c.value]: !on } as Record<WordClass, boolean> })
                   }
                 >
-                  {c.label}
+                  <span className="chip-label">{c.label}</span>
+                  <span className="chip-ex">{c.example}</span>
                 </button>
               );
             })}
           </div>
           <p className="hint">
-            Pronouns, adverbs, conjunctions and interjections are off by default: minä, kyllä, ja, ei, hei.
+            The usual house rule: the last four are off.
           </p>
         </section>
 
@@ -138,17 +139,16 @@ export function RulesSheet({
                   type="button"
                   className={on ? "chip-btn chip-on" : "chip-btn"}
                   aria-pressed={on}
-                  title={st.example}
                   onClick={() => set({ styles: { ...styles, [st.value]: !on } as Record<Style, boolean> })}
                 >
-                  {st.label}
+                  <span className="chip-label">{st.label}</span>
+                  <span className="chip-ex">{st.example}</span>
                 </button>
               );
             })}
           </div>
           <p className="hint">
-            From Kielitoimiston sanakirja&apos;s labels. Off means words that only exist in that style are left
-            out, e.g. slang: nisti, jäbä, darra.
+            From Kielitoimiston sanakirja&apos;s labels. Off leaves out words that only exist in that style.
           </p>
         </section>
 
