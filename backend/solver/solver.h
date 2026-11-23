@@ -14,6 +14,7 @@
 #include <cwctype>
 #include <chrono>
 #include <cstdint>
+#include <functional>
 
 #include "utils.h"
 
@@ -256,6 +257,29 @@ public:
     long long nodesVisited() const { return nodes; }
     bool hitBudget() const { return budget_exhausted; }
 
+    // ── Tracing (opt-in, for the app's search visualisation) ────────────────
+    // A placement is a word laid on the board: an index into the dictionary's
+    // entries plus where it went. `placed()` is the current stack of them, so
+    // after a successful solve it is the solution in the order it was built.
+    struct Placement { int entry; int row; int col; bool horizontal; };
+    // entry < 0 marks an undo of the most recent placement.
+    using TraceEvent = Placement;
+
+    bool trace = false;
+    size_t trace_cap = 600;              // events recorded before we stop recording
+    std::vector<TraceEvent> events;
+    bool traceTruncated() const { return trace_truncated; }
+    const std::vector<Placement>& placed() const { return stack; }
+    // The furthest the search got: the stack that used the most tiles.
+    const std::vector<Placement>& closest() const { return best_stack; }
+    int closestTiles() const { return best_tiles; }
+    const WordUtil& words() const { return *word_util_ptr; }
+    int boardWidth() const { return width; }
+
+    // Called roughly every millisecond of search (only when set). Returning
+    // false stops the search, e.g. when the client watching it has gone.
+    std::function<bool()> on_tick;
+
     Hand hand;
 
     // Search budget. The search is exhaustive within these limits; they exist
@@ -290,6 +314,26 @@ private:
 
     long long nodes = 0;
     bool budget_exhausted = false;
+
+    std::vector<Placement> stack;
+    std::vector<Placement> best_stack;
+    int best_tiles = 0;
+    int total_tiles = 0;
+    bool trace_truncated = false;
+    void tracePlace(int entry, int row, int col, bool horizontal)
+    {
+        stack.push_back({entry, row, col, horizontal});
+        int used = total_tiles - (int)hand.tiles.length();
+        if (used > best_tiles) { best_tiles = used; best_stack = stack; }
+        if (events.size() < trace_cap) events.push_back({entry, row, col, horizontal});
+        else trace_truncated = true;
+    }
+    void traceUndo()
+    {
+        stack.pop_back();
+        if (events.size() < trace_cap) events.push_back({-1, 0, 0, false});
+        else trace_truncated = true;
+    }
     std::chrono::steady_clock::time_point deadline;
 };
 
@@ -395,10 +439,13 @@ bool Board::tryPlace(const std::wstring& word, int row, int col, bool horizontal
 bool Board::outOfBudget()
 {
     if (nodes >= max_nodes) { budget_exhausted = true; return true; }
-    if ((nodes & 0x3F) == 0 && std::chrono::steady_clock::now() >= deadline)
+    if ((nodes & 0x3F) == 0)
     {
-        budget_exhausted = true;
-        return true;
+        if (std::chrono::steady_clock::now() >= deadline || (on_tick && !on_tick()))
+        {
+            budget_exhausted = true;
+            return true;
+        }
     }
     return false;
 }
@@ -495,7 +542,9 @@ bool Board::search()
                         if (!accept_duplicates)
                             inserted = used_words.insert(e.word).second;
 
+                        if (trace) tracePlace(ei, row, col, horizontal);
                         if (search()) return true;
+                        if (trace) traceUndo();
 
                         // Undo everything this branch touched.
                         if (inserted) used_words.erase(e.word);
@@ -531,6 +580,12 @@ bool Board::startSolver()
 
     nodes = 0;
     budget_exhausted = false;
+    stack.clear();
+    best_stack.clear();
+    best_tiles = 0;
+    total_tiles = (int)hand.tiles.length();
+    events.clear();
+    trace_truncated = false;
     deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(max_ms);
 
     hand_counts = {};
@@ -579,8 +634,10 @@ bool Board::startSolver()
         used_words.clear();
         if (!accept_duplicates) used_words.insert(e.word);
 
+        if (trace) tracePlace(ei, row, col, true);
         if (hand.tiles.empty()) return true;   // single word used the whole hand
         if (search()) return true;
+        if (trace) traceUndo();
 
         // Undo and try the next seed word.
         for (int idx : written) cells[idx] = 0;

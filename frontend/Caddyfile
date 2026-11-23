@@ -9,7 +9,11 @@
 	encode gzip
 
 	handle_path /api/solver/* {
-		reverse_proxy solver:8080
+		# Flush at once: a streamed solve ("stream": "1") sends board
+		# snapshots while it searches.
+		reverse_proxy solver:8080 {
+			flush_interval -1
+		}
 	}
 
 	handle_path /api/detect/* {

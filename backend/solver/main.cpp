@@ -9,6 +9,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <unistd.h>
+#include <csignal>
 
 #include <memory>
 #include <mutex>
@@ -17,7 +18,7 @@
 #include "solver.h"
 #include "utils.h"
 
-static const int PORT = 8080;
+static const int DEFAULT_PORT = 8080;  // SOLVER_PORT overrides it
 // ============================================================================
 // Lexicon and rules
 //
@@ -306,6 +307,64 @@ std::string gridToJson(const std::vector<std::vector<std::string>>& grid)
 }
 
 // ============================================================================
+// Search trace (opt-in): what the app animates while it waits
+//
+// A placement is ["WORD", row, col, 1 if across else 0] in the solver's own
+// board coordinates; an undo is 0. Coordinates only matter relative to each
+// other, and the solution path lays out exactly the returned grid.
+// ============================================================================
+
+static void placementJson(std::ostringstream& ss, const Board& board, const Board::Placement& p)
+{
+    ss << "[\"" << utils::wstringToString(utils::toUpper(board.words().entries[p.entry].word)) << "\","
+       << p.row << ',' << p.col << ',' << (p.horizontal ? 1 : 0) << ']';
+}
+
+static void placementsJson(std::ostringstream& ss, const Board& board, const std::vector<Board::Placement>& list)
+{
+    ss << '[';
+    for (size_t i = 0; i < list.size(); i++)
+    {
+        if (i) ss << ',';
+        placementJson(ss, board, list[i]);
+    }
+    ss << ']';
+}
+
+static std::string traceJson(const Board& board)
+{
+    std::ostringstream ss;
+    ss << "{\"nodes\":" << board.nodesVisited()
+       << ",\"truncated\":" << (board.traceTruncated() ? "true" : "false")
+       << ",\"events\":[";
+    for (size_t i = 0; i < board.events.size(); i++)
+    {
+        if (i) ss << ',';
+        const auto& e = board.events[i];
+        if (e.entry < 0) ss << '0';
+        else placementJson(ss, board, e);
+    }
+    ss << "],\"path\":";
+    placementsJson(ss, board, board.placed());
+    ss << ",\"closest\":";
+    placementsJson(ss, board, board.closest());
+    ss << ",\"closest_tiles\":" << board.closestTiles() << '}';
+    return ss.str();
+}
+
+static bool sendAll(int fd, const std::string& data)
+{
+    size_t off = 0;
+    while (off < data.size())
+    {
+        ssize_t n = send(fd, data.data() + off, data.size() - off, MSG_NOSIGNAL);
+        if (n <= 0) return false;
+        off += (size_t)n;
+    }
+    return true;
+}
+
+// ============================================================================
 // HTTP handling
 // ============================================================================
 
@@ -414,7 +473,14 @@ void handleClient(int client_fd)
             return;
         }
 
-        std::cout << "Solving for letters: " << letters << std::endl;
+        // "trace": "1" adds the search trace to the response. "stream": "1"
+        // (implies trace) answers with newline-delimited JSON instead: a
+        // {"frame": ...} snapshot of the board every ~80 ms while the search
+        // runs, then the usual result object as the last line.
+        const bool stream = jsonGetString(body, "stream") == "1";
+        const bool trace = stream || jsonGetString(body, "trace") == "1";
+
+        std::cout << "Solving for letters: " << letters << (stream ? " (stream)" : trace ? " (trace)" : "") << std::endl;
 
         utils::Timer timer;
         timer.start();
@@ -423,24 +489,51 @@ void handleClient(int client_fd)
         Board board(*dict);
         board.hand = Hand(utils::stringToWString(letters));
         board.reset();
+        board.trace = trace;
 
-        bool found = board.startSolver();
+        bool client_gone = false;
+        if (stream)
+        {
+            std::string head =
+                "HTTP/1.1 200 OK\r\n"
+                "Content-Type: application/x-ndjson\r\n"
+                "Cache-Control: no-cache\r\n"
+                "X-Accel-Buffering: no\r\n"
+                "Access-Control-Allow-Origin: *\r\n"
+                "Connection: close\r\n\r\n";
+            client_gone = !sendAll(client_fd, head);
+
+            auto started = std::chrono::steady_clock::now();
+            auto last = started;
+            board.on_tick = [&]() {
+                auto now = std::chrono::steady_clock::now();
+                if (now - last < std::chrono::milliseconds(80)) return true;
+                last = now;
+                std::ostringstream ss;
+                ss << "{\"frame\":{\"ms\":"
+                   << std::chrono::duration_cast<std::chrono::milliseconds>(now - started).count()
+                   << ",\"nodes\":" << board.nodesVisited()
+                   << ",\"best\":" << board.closestTiles() << ",\"path\":";
+                placementsJson(ss, board, board.placed());
+                ss << "}}\n";
+                // A client that has gone away stops the search.
+                if (!sendAll(client_fd, ss.str())) client_gone = true;
+                return !client_gone;
+            };
+        }
+
+        bool found = !client_gone && board.startSolver();
         timer.stop();
 
-        if (!found)
-        {
-            std::cout << "No solution found (" << timer.getMs() << " ms)" << std::endl;
-            std::string resp = "{\"solved\":false,\"time_ms\":" + std::to_string(timer.getMs()) + ",\"grid\":[]}";
-            sendResponse(client_fd, 200, "OK", resp);
-        }
-        else
-        {
-            std::cout << "Solution found in " << timer.getMs() << " ms" << std::endl;
-            auto result_grid = board.getResultGrid();
-            std::string grid_json = gridToJson(result_grid);
-            std::string resp = "{\"solved\":true,\"time_ms\":" + std::to_string(timer.getMs()) + ",\"grid\":" + grid_json + "}";
-            sendResponse(client_fd, 200, "OK", resp);
-        }
+        std::cout << (found ? "Solution found in " : "No solution found in ") << timer.getMs() << " ms" << std::endl;
+        std::string resp = "{\"solved\":" + std::string(found ? "true" : "false") +
+                           ",\"time_ms\":" + std::to_string(timer.getMs()) +
+                           ",\"grid\":" + (found ? gridToJson(board.getResultGrid()) : "[]");
+        if (trace) resp += ",\"trace\":" + traceJson(board);
+        resp += "}";
+
+        if (stream) { if (!client_gone) sendAll(client_fd, resp + "\n"); }
+        else sendResponse(client_fd, 200, "OK", resp);
 
         close(client_fd);
         return;
@@ -457,6 +550,11 @@ void handleClient(int client_fd)
 int main(int argc, char* argv[])
 {
     std::locale::global(std::locale(""));
+    // A client that hangs up mid-response must not kill the whole server.
+    signal(SIGPIPE, SIG_IGN);
+
+    int port = DEFAULT_PORT;
+    if (const char* env = std::getenv("SOLVER_PORT")) port = toInt(env, DEFAULT_PORT);
 
     std::string lexicon_path = "../wordlist-parser/lexicon.tsv";
     if (argc > 1) lexicon_path = argv[1];
@@ -478,12 +576,12 @@ int main(int argc, char* argv[])
     sockaddr_in addr{};
     addr.sin_family = AF_INET;
     addr.sin_addr.s_addr = INADDR_ANY;
-    addr.sin_port = htons(PORT);
+    addr.sin_port = htons(port);
 
     if (bind(server_fd, (sockaddr*)&addr, sizeof(addr)) < 0) { perror("bind"); return 1; }
     if (listen(server_fd, 10) < 0) { perror("listen"); return 1; }
 
-    std::cout << "\nBananagrams solver server listening on http://localhost:" << PORT << std::endl;
+    std::cout << "\nBananagrams solver server listening on http://localhost:" << port << std::endl;
     std::cout << "Endpoints:" << std::endl;
     std::cout << "  GET  /health       - Health check" << std::endl;
     std::cout << "  POST /solve        - Solve (body: {\"letters\": \"...\"})" << std::endl;
