@@ -632,34 +632,7 @@ kbd {
 
 .photo-caption { padding: 10px 16px 14px; }
 
-/* ── Legit mode switch ───────────────────────────────────────────────────── */
-
-.legit {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-  width: 100%;
-  padding: 12px 0 0;
-  margin-top: 2px;
-  border: none;
-  border-top: 1.5px solid var(--line);
-  background: none;
-  text-align: left;
-  cursor: pointer;
-}
-
-.legit-compact {
-  padding: 10px 14px;
-  margin: 0;
-  border: 1.5px solid var(--line);
-  border-radius: 12px;
-  background: var(--card);
-}
-
-.legit-text { display: flex; flex-direction: column; gap: 2px; }
-.legit-title { font-weight: 700; font-size: 0.95rem; }
-.legit-sub { font-size: 0.8rem; color: var(--ink-soft); }
+/* ── Switch, house rules, banning ─────────────────────────────────────────── */
 
 .switch {
   position: relative;
@@ -684,3 +657,127 @@ kbd {
   transition: transform 160ms cubic-bezier(0.3, 1.4, 0.5, 1);
 }
 .switch-on .switch-knob { transform: translateX(18px); }
+
+.rules-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 0 0;
+  border: none;
+  border-top: 1.5px solid var(--line);
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+.rules-btn-compact {
+  padding: 10px 14px;
+  border: 1.5px solid var(--line);
+  border-radius: 12px;
+  background: var(--card);
+}
+.rules-btn:hover .rules-chevron { transform: translateX(2px); }
+.rules-title { font-weight: 700; font-size: 0.95rem; }
+.rules-chevron { font-size: 1.5rem; color: var(--ink-soft); transition: transform 120ms ease; }
+
+.segmented-3 { grid-template-columns: repeat(3, 1fr); }
+
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip-btn {
+  min-height: 38px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1.5px solid var(--line);
+  background: var(--card);
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+.chip-btn:hover:not(:disabled) { border-color: var(--ink); }
+.chip-btn:disabled { cursor: not-allowed; }
+.chip-on { background: var(--ink); border-color: var(--ink); color: var(--card); }
+
+.stepper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.stepper-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--paper-deep);
+  border-radius: 12px;
+  padding: 4px;
+}
+.step-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 9px;
+  border: none;
+  background: var(--card);
+  font-size: 1.3rem;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(70, 50, 20, 0.2);
+}
+.step-btn:disabled { opacity: 0.35; cursor: not-allowed; box-shadow: none; }
+.step-value { font-family: var(--font-display); font-weight: 800; font-size: 1.2rem; }
+
+.toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ban-list { display: flex; flex-direction: column; gap: 8px; }
+.ban-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--paper-deep);
+}
+.ban-word { font-family: var(--font-display); font-weight: 800; letter-spacing: 0.02em; }
+
+.chip-btn-word { border: none; cursor: pointer; }
+.chip-btn-word:hover { background: #ddd0b0; }
+.chip.chip-picked { background: var(--banana); }
+.chip.chip-picked:hover { background: var(--banana-deep); }
+
+.ban-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 6px;
+  padding-top: 10px;
+  border-top: 1.5px solid var(--line);
+}
+
+.btn-sm { min-height: 38px; padding: 6px 14px; font-size: 0.9rem; box-shadow: 0 2px 0 var(--ink); }
+
+.text-input {
+  width: 100%;
+  border: 1.5px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  padding: 10px 12px;
+  font: inherit;
+  font-size: 1rem;
+  resize: vertical;
+  outline: none;
+}
+.text-input:focus { border-color: var(--ink); }

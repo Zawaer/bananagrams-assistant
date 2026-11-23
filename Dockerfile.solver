@@ -16,13 +16,12 @@ WORKDIR /app
 COPY backend/solver/solver.h backend/solver/utils.h backend/solver/main.cpp backend/solver/CMakeLists.txt ./
 
 # Copy wordlist
-COPY backend/wordlist-parser/wordlist.txt ./wordlist.txt
-# Everyday words only, for "common" (legit) mode
-COPY backend/wordlist-parser/wordlist-common.txt ./wordlist-common.txt
+# Every word with its classes and frequency rank, for the house rules
+COPY backend/wordlist-parser/lexicon.tsv ./lexicon.tsv
 
 # Build
 RUN mkdir -p build && cd build && cmake .. && make
 
 EXPOSE 8080
 
-CMD ["./build/solver-server", "./wordlist.txt", "./wordlist-common.txt"]
+CMD ["./build/solver-server", "./lexicon.tsv"]

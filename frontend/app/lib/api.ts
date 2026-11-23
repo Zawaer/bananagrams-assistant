@@ -1,3 +1,5 @@
+import { rulesToWire, type Rules } from "./rules";
+
 // Backend calls. The page is served from the same origin as both backends
 // (under /api), unless NEXT_PUBLIC_* says otherwise, as in `yarn dev`.
 
@@ -89,19 +91,12 @@ export async function detect(
   }
 }
 
-/** "common" (legit mode) solves with everyday words of up to 7 letters only. */
-export type WordMode = "common" | "full";
-
-export async function solve(
-  letters: string[],
-  mode: WordMode,
-  signal?: AbortSignal
-): Promise<SolveResult> {
+export async function solve(letters: string[], rules: Rules, signal?: AbortSignal): Promise<SolveResult> {
   try {
     const res = await fetch(`${SOLVER_SERVER}/solve`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ letters: letters.join(""), mode }),
+      body: JSON.stringify({ letters: letters.join(""), ...rulesToWire(rules) }),
       signal,
     });
     if (!res.ok) throw new Error(`The solver failed (${res.status}).`);

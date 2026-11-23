@@ -1,9 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { detect, solve, warmDetector, type SolveResult, type WordMode } from "./lib/api";
+import { detect, solve, warmDetector, type SolveResult } from "./lib/api";
+import { DEFAULT_RULES, rulesKey, summarize, type Rules } from "./lib/rules";
+import { RulesSheet } from "./components/RulesSheet";
 import { PhotoOverlay, type Photo } from "./components/PhotoOverlay";
-import { extractWords, formatMs } from "./lib/grid";
+import { formatMs, wordRuns, type WordRun } from "./lib/grid";
 import { awkwardness, removeOne, sortLetters } from "./lib/letters";
 import { LetterPad } from "./components/LetterPad";
 import { Sheet } from "./components/Sheet";
@@ -48,7 +50,7 @@ const PRESETS = [10, 15, 21];
 const DRAW_COUNT = 3;
 const DOUBTFUL = 0.9;
 const STORAGE_KEY = "bananagrams-game-v2";
-const LEGIT_KEY = "bananagrams-legit";
+const RULES_KEY = "bananagrams-rules";
 
 let nextId = 1;
 const toTiles = (letters: string[], conf?: number[]): HandTile[] =>
@@ -93,13 +95,29 @@ export default function Home() {
   const [showPhoto, setShowPhoto] = useState(false);
   const [customOpen, setCustomOpen] = useState(false);
 
-  // Legit mode: solve with everyday words only, so the grid doesn't give the
-  // game away with a 16-letter compound. A preference, kept across games.
-  const [legit, setLegit] = useState(true);
-  const mode: WordMode = legit ? "common" : "full";
-  const modeRef = useRef(mode);
-  modeRef.current = mode;
-  useEffect(() => setLegit(localStorage.getItem(LEGIT_KEY) !== "0"), []);
+  // House rules: which words count. A preference, kept across games.
+  const [rules, setRules] = useState<Rules>(DEFAULT_RULES);
+  const rulesRef = useRef(rules);
+  rulesRef.current = rules;
+  const [rulesOpen, setRulesOpen] = useState(false);
+  const rulesAtOpen = useRef("");
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(RULES_KEY);
+      if (saved) setRules({ ...DEFAULT_RULES, ...JSON.parse(saved) });
+    } catch {
+      // Unreadable rules fall back to the defaults.
+    }
+  }, []);
+  const updateRules = (r: Rules) => {
+    setRules(r);
+    rulesRef.current = r;
+    localStorage.setItem(RULES_KEY, JSON.stringify(r));
+  };
+
+  // Banning: a word picked on the solved board, waiting for its reason.
+  const [banWord, setBanWord] = useState<string | null>(null);
+  const [banReason, setBanReason] = useState("");
 
   // Dump helper
   const [dumpCheck, setDumpCheck] = useState<DumpCheck | null>(null);
@@ -141,7 +159,7 @@ export default function Home() {
   }, [phase]);
 
   const letters = lettersOf(game.hand);
-  const handKey = `${mode}:${sortLetters(letters).join("")}`;
+  const handKey = `${rulesKey(rules)}:${sortLetters(letters).join("")}`;
 
   // ==========================================================================
   // Actions
@@ -270,8 +288,9 @@ export default function Home() {
     dumpAbort.current?.abort();
     setDumpCheck(null);
     try {
-      const result = await solve(hand, modeRef.current);
-      setGame((g) => ({ ...g, solution: result, solvedFor: `${modeRef.current}:${sortLetters(hand).join("")}` }));
+      const key = rulesKey(rulesRef.current);
+      const result = await solve(hand, rulesRef.current);
+      setGame((g) => ({ ...g, solution: result, solvedFor: `${key}:${sortLetters(hand).join("")}` }));
       setPhase("result");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Solving failed.");
@@ -279,12 +298,27 @@ export default function Home() {
     }
   }, []);
 
-  // Flipping the mode on the result screen re-solves the same hand at once.
-  const toggleLegit = (on: boolean) => {
-    setLegit(on);
-    localStorage.setItem(LEGIT_KEY, on ? "1" : "0");
-    modeRef.current = on ? "common" : "full";
-    if (phase === "result" && letters.length >= 2) runSolve(letters);
+  // Changing the rules on the result screen re-solves the same hand.
+  const openRules = () => {
+    rulesAtOpen.current = rulesKey(rulesRef.current);
+    setRulesOpen(true);
+  };
+  const closeRules = () => {
+    setRulesOpen(false);
+    if (phase === "result" && rulesKey(rulesRef.current) !== rulesAtOpen.current && letters.length >= 2)
+      runSolve(letters);
+  };
+
+  const confirmBan = () => {
+    if (!banWord) return;
+    const word = banWord.toLowerCase();
+    updateRules({
+      ...rulesRef.current,
+      banned: [...rulesRef.current.banned.filter((b) => b.word !== word), { word, reason: banReason.trim() }],
+    });
+    setBanWord(null);
+    setBanReason("");
+    if (letters.length >= 2) runSolve(letters);
   };
 
   // For each distinct letter, try solving the hand without it. A letter whose
@@ -305,7 +339,7 @@ export default function Home() {
       while (queue.length && !ctrl.signal.aborted) {
         const letter = queue.shift()!;
         try {
-          const r = await solve(removeOne(hand, letter), modeRef.current, ctrl.signal);
+          const r = await solve(removeOne(hand, letter), rulesRef.current, ctrl.signal);
           if (r.solved) fits.push(letter);
         } catch {
           // A failed check just doesn't count as a fit.
@@ -470,7 +504,7 @@ export default function Home() {
                 )}
               </div>
               <p className="hint">Used to check the photo didn&apos;t miss a tile.</p>
-              <LegitSwitch on={legit} onChange={toggleLegit} />
+              <RulesButton rules={rules} onClick={openRules} />
             </div>
 
             {error && <div className="alert alert-danger">{error}</div>}
@@ -647,9 +681,9 @@ export default function Home() {
         {/* ── RESULT ────────────────────────────────────────────────────── */}
         {phase === "result" && solution && solutionCurrent && (
           <section className="stack-lg fade-in">
-            <LegitSwitch on={legit} onChange={toggleLegit} compact />
+            <RulesButton rules={rules} onClick={openRules} compact />
             {solution.solved ? (
-              <SolvedView solution={solution} count={count} />
+              <SolvedView solution={solution} count={count} onBan={setBanWord} />
             ) : (
               <>
                 <div className="center stack-sm">
@@ -804,6 +838,31 @@ export default function Home() {
       </main>
 
       {/* ── Sheets ──────────────────────────────────────────────────────── */}
+      <RulesSheet open={rulesOpen} rules={rules} onChange={updateRules} onClose={closeRules} />
+
+      <Sheet
+        open={banWord != null}
+        onClose={() => setBanWord(null)}
+        title={<span>Ban {banWord?.toUpperCase()}</span>}
+      >
+        <div className="stack">
+          <label className="stack-sm">
+            <span className="label">Reason (optional)</span>
+            <textarea
+              className="text-input"
+              rows={2}
+              value={banReason}
+              placeholder="e.g. ei hyväksytä pikkusanoja kuten kyllä tai ei"
+              onChange={(e) => setBanReason(e.target.value)}
+            />
+          </label>
+          <p className="hint">The word stays banned in every game until you unban it in House rules.</p>
+          <button type="button" className="btn btn-primary" onClick={confirmBan}>
+            Ban and solve again
+          </button>
+        </div>
+      </Sheet>
+
       <Sheet
         open={selectedTile != null}
         onClose={() => setSelected(null)}
@@ -880,67 +939,86 @@ export default function Home() {
 // Pieces
 // ============================================================================
 
-function SolvedView({ solution, count }: { solution: SolveResult; count: number }) {
-  const words = extractWords(solution.grid);
+function SolvedView({
+  solution,
+  count,
+  onBan,
+}: {
+  solution: SolveResult;
+  count: number;
+  onBan: (word: string) => void;
+}) {
+  const runs = wordRuns(solution.grid);
+  const [picked, setPicked] = useState<WordRun | null>(null);
+  const highlight = new Set(picked?.cells.map(([y, x]) => `${y}-${x}`));
+
+  // Tapping a tile picks the word through it; tapping the same tile again
+  // switches between its across and down word.
+  const onTileClick = (y: number, x: number) => {
+    const through = runs.filter((r) => r.cells.some(([cy, cx]) => cy === y && cx === x));
+    if (!through.length) return;
+    const i = picked ? through.indexOf(picked) : -1;
+    setPicked(i >= 0 ? (i + 1 < through.length ? through[i + 1] : null) : through[0]);
+  };
+
   return (
     <>
       <div className="center stack-sm">
         <h2 className="title-sm">All {count} tiles placed</h2>
         <p className="muted small">
-          {words.across.length + words.down.length} words · {formatMs(solution.time_ms)}
+          {runs.length} words · {formatMs(solution.time_ms)}
         </p>
       </div>
       <div className="board">
-        <SolutionBoard grid={solution.grid} />
+        <SolutionBoard grid={solution.grid} highlight={highlight} onTileClick={onTileClick} />
       </div>
       <div className="card stack-sm">
-        {([
-          ["Across", words.across],
-          ["Down", words.down],
-        ] as const).map(([label, list]) =>
-          list.length ? (
-            <div key={label} className="word-row">
-              <span className="label w-16 shrink-0">{label}</span>
+        {(["across", "down"] as const).map((dir) => {
+          const list = runs.filter((r) => r.dir === dir);
+          return list.length ? (
+            <div key={dir} className="word-row">
+              <span className="label w-16 shrink-0">{dir === "across" ? "Across" : "Down"}</span>
               <div className="flex flex-wrap gap-1.5">
-                {list.map((w, i) => (
-                  <span key={`${w}-${i}`} className="chip">
-                    {w}
-                  </span>
+                {list.map((r, i) => (
+                  <button
+                    key={`${r.word}-${i}`}
+                    type="button"
+                    className={picked === r ? "chip chip-btn-word chip-picked" : "chip chip-btn-word"}
+                    onClick={() => setPicked(picked === r ? null : r)}
+                  >
+                    {r.word}
+                  </button>
                 ))}
               </div>
             </div>
-          ) : null
+          ) : null;
+        })}
+        {picked ? (
+          <div className="ban-bar">
+            <span>
+              <strong>{picked.word}</strong> <span className="muted">not allowed?</span>
+            </span>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => onBan(picked.word)}>
+              Ban word
+            </button>
+          </div>
+        ) : (
+          <p className="hint">Tap a word to ban it.</p>
         )}
       </div>
     </>
   );
 }
 
-function LegitSwitch({
-  on,
-  onChange,
-  compact,
-}: {
-  on: boolean;
-  onChange: (on: boolean) => void;
-  compact?: boolean;
-}) {
+function RulesButton({ rules, onClick, compact }: { rules: Rules; onClick: () => void; compact?: boolean }) {
   return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={on}
-      className={compact ? "legit legit-compact" : "legit"}
-      onClick={() => onChange(!on)}
-    >
-      <span className="legit-text">
-        <span className="legit-title">Legit mode</span>
-        <span className="legit-sub">
-          {on ? "Everyday words, 7 letters max" : "Any word in the dictionary"}
-        </span>
+    <button type="button" className={compact ? "rules-btn rules-btn-compact" : "rules-btn"} onClick={onClick}>
+      <span className="stack-sm">
+        <span className="rules-title">House rules</span>
+        <span className="hint">{summarize(rules)}</span>
       </span>
-      <span className={on ? "switch switch-on" : "switch"} aria-hidden>
-        <span className="switch-knob" />
+      <span className="rules-chevron" aria-hidden>
+        ›
       </span>
     </button>
   );

@@ -10,7 +10,16 @@ const MIN_TILE = 14;
 
 // The solved grid. Tiles shrink so the whole board fits the screen instead of
 // scrolling sideways, and drop in one diagonal at a time.
-export function SolutionBoard({ grid }: { grid: Grid }) {
+export function SolutionBoard({
+  grid,
+  highlight,
+  onTileClick,
+}: {
+  grid: Grid;
+  /** "y-x" keys of tiles to highlight (the selected word). */
+  highlight?: Set<string>;
+  onTileClick?: (y: number, x: number) => void;
+}) {
   const wrap = useRef<HTMLDivElement>(null);
   const cols = gridWidth(grid);
   const [size, setSize] = useState(MAX_TILE);
@@ -46,6 +55,8 @@ export function SolutionBoard({ grid }: { grid: Grid }) {
                 key={`${y}-${x}`}
                 letter={cell}
                 size={size}
+                highlight={highlight?.has(`${y}-${x}`)}
+                onClick={onTileClick ? () => onTileClick(y, x) : undefined}
                 className="tile-drop"
                 style={{ animationDelay: `${(x + y) * 25}ms` }}
               />

@@ -329,7 +329,17 @@ with no extra configuration. See [RUNNING.md](RUNNING.md) for more detail.
 
 `solved: false` comes back with an empty grid when no packing is found within the search budget.
 
-Add `"mode": "common"` to solve with everyday words only (the app's *Legit mode*): words of at most 7 letters that are among the 50,000 most frequent Finnish words. The list is `backend/wordlist-parser/wordlist-common.txt`, built by `make-common-wordlist.py` from [FrequencyWords](https://github.com/hermitdave/FrequencyWords) (CC BY-SA 4.0). On random 15- and 21-tile hands it solves as often as the full dictionary.
+House rules ride along as optional string fields; every run on the board, crossings included, must satisfy them:
+
+| field | meaning |
+|---|---|
+| `common` | `"1"`: only words among the 50,000 most frequent Finnish words (no abbreviations); a larger number such as `"20000"` sets the cutoff. `"mode": "common"` is the older spelling of `"1"`. |
+| `min_len`, `max_len` | word length limits |
+| `classes` | allowed word classes: `n` nouns, `v` verbs, `a` adjectives, `u` numerals, `o` other |
+| `plurals` | `"0"` drops plural-only words (housut, häät) |
+| `banned` | comma-separated words to leave out |
+
+The solver reads `backend/wordlist-parser/lexicon.tsv` (each word with its classes, a plural/abbreviation flag and its frequency rank), built by `make-lexicon.py` from the Kotus word list and [FrequencyWords](https://github.com/hermitdave/FrequencyWords) (CC BY-SA 4.0).
 
 The request body may use raw UTF-8 or `\uXXXX` escapes for `ä` and `ö`. Both decode correctly, so clients like Python's `json.dumps` (which escapes non-ASCII by default) work as well as the browser's `JSON.stringify`.
 

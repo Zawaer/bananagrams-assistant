@@ -11,15 +11,152 @@
 #include <unistd.h>
 
 #include <memory>
+#include <mutex>
+#include <codecvt>
 
 #include "solver.h"
 #include "utils.h"
 
 static const int PORT = 8080;
-static WordUtil* g_wordUtil = nullptr;
-// Optional second dictionary of everyday words, used when a request asks for
-// "mode": "common". Null when the server was started without one.
-static WordUtil* g_commonWordUtil = nullptr;
+// ============================================================================
+// Lexicon and rules
+//
+// The lexicon is every word with its word classes and frequency rank (see
+// backend/wordlist-parser/make-lexicon.py). Each request can carry house
+// rules; the solver builds a dictionary of just the words those rules allow,
+// and every run on the board must come from it, crossings included.
+// ============================================================================
+
+std::string jsonGetString(const std::string& json, const std::string& key);
+
+struct LexEntry
+{
+    std::wstring word;
+    std::string flags;  // n v a u o word classes, p = plural, x = abbreviation
+    int rank;           // frequency rank, 0 = not among the common words
+};
+
+static std::vector<LexEntry> g_lexicon;
+
+// Legit mode keeps words up to this frequency rank ("common": "1"); a number
+// above 1 sets the cutoff directly, e.g. "20000" for the app's strict level.
+static const int LEGIT_RANK = 50000;
+
+struct Rules
+{
+    int max_rank = 0;          // 0 = any word
+    int min_len = 2;
+    int max_len = 99;
+    std::string classes;       // allowed classes; empty = all
+    bool plurals = true;
+    std::vector<std::wstring> banned;
+
+    std::string key() const
+    {
+        std::ostringstream k;
+        k << max_rank << '|' << min_len << '|' << max_len << '|' << classes << '|' << plurals << '|';
+        for (const auto& b : banned) k << utils::wstringToString(b) << ',';
+        return k.str();
+    }
+
+    bool allows(const LexEntry& e) const
+    {
+        int len = (int)e.word.length();
+        if (len < min_len || len > max_len) return false;
+        if (max_rank && (e.rank == 0 || e.rank > max_rank)) return false;
+        if (max_rank && e.flags.find('x') != std::string::npos) return false;
+        if (!plurals && e.flags.find('p') != std::string::npos) return false;
+        if (!classes.empty())
+        {
+            bool any = false;
+            for (char c : e.flags)
+                if (c != 'p' && c != 'x' && classes.find(c) != std::string::npos) { any = true; break; }
+            if (!any) return false;
+        }
+        return std::find(banned.begin(), banned.end(), e.word) == banned.end();
+    }
+};
+
+static int toInt(const std::string& s, int fallback)
+{
+    try { return s.empty() ? fallback : std::stoi(s); } catch (...) { return fallback; }
+}
+
+static Rules parseRules(const std::string& body)
+{
+    Rules r;
+    // "mode": "common" is the older way to ask for legit mode.
+    std::string common = jsonGetString(body, "common");
+    if (jsonGetString(body, "mode") == "common" && common.empty()) r.max_rank = LEGIT_RANK;
+    else r.max_rank = common == "1" ? LEGIT_RANK : toInt(common, 0) > 1 ? toInt(common, 0) : 0;
+    r.min_len = std::max(2, toInt(jsonGetString(body, "min_len"), 2));
+    r.max_len = std::max(r.min_len, toInt(jsonGetString(body, "max_len"), 99));
+    r.classes = jsonGetString(body, "classes");
+    r.plurals = jsonGetString(body, "plurals") != "0";
+
+    std::wstring banned = utils::stringToWString(jsonGetString(body, "banned"));
+    std::wstring cur;
+    for (wchar_t c : banned + L",")
+    {
+        if (c == L',') { if (!cur.empty()) r.banned.push_back(cur); cur.clear(); }
+        else cur += (wchar_t)std::towlower(c);
+    }
+    std::sort(r.banned.begin(), r.banned.end());
+    return r;
+}
+
+// Building a dictionary takes ~100 ms for the full list, so keep the last few
+// rule sets. A dump check fires many solves with the same rules at once.
+static std::mutex g_cacheMutex;
+static std::vector<std::pair<std::string, std::shared_ptr<WordUtil>>> g_cache;
+static const size_t CACHE_SIZE = 4;
+
+static std::shared_ptr<WordUtil> dictionaryFor(const Rules& rules)
+{
+    std::string key = rules.key();
+    std::lock_guard<std::mutex> lock(g_cacheMutex);
+    for (size_t i = 0; i < g_cache.size(); i++)
+        if (g_cache[i].first == key)
+        {
+            auto hit = g_cache[i];
+            g_cache.erase(g_cache.begin() + i);
+            g_cache.insert(g_cache.begin(), hit);
+            return hit.second;
+        }
+
+    std::vector<std::wstring> words;
+    for (const auto& e : g_lexicon)
+        if (rules.allows(e)) words.push_back(e.word);
+    auto dict = std::make_shared<WordUtil>(std::move(words), "rules " + key);
+    g_cache.insert(g_cache.begin(), {key, dict});
+    if (g_cache.size() > CACHE_SIZE) g_cache.pop_back();
+    return dict;
+}
+
+static void loadLexicon(const std::string& path)
+{
+    std::wifstream in(path);
+    if (!in.is_open()) throw std::runtime_error("Failed to load lexicon: " + path);
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
+    in.imbue(std::locale(std::locale(), new std::codecvt_utf8<wchar_t>));
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
+    std::wstring line;
+    while (std::getline(in, line))
+    {
+        std::wistringstream row(line);
+        std::wstring word, flags;
+        int rank = 0;
+        if (!std::getline(row, word, L'\t') || !std::getline(row, flags, L'\t')) continue;
+        row >> rank;
+        g_lexicon.push_back({word, utils::wstringToString(flags), rank});
+    }
+    std::cout << "Lexicon: " << g_lexicon.size() << " words" << std::endl;
+}
 
 // ============================================================================
 // Minimal JSON helpers (no external dependency)
@@ -282,11 +419,8 @@ void handleClient(int client_fd)
         utils::Timer timer;
         timer.start();
 
-        // "common" mode solves with everyday words only, so the grid looks
-        // like something a person would build. Falls back to the full list if
-        // the server has no common list loaded.
-        bool common = jsonGetString(body, "mode") == "common" && g_commonWordUtil;
-        Board board(common ? *g_commonWordUtil : *g_wordUtil);
+        std::shared_ptr<WordUtil> dict = dictionaryFor(parseRules(body));
+        Board board(*dict);
         board.hand = Hand(utils::stringToWString(letters));
         board.reset();
 
@@ -324,27 +458,15 @@ int main(int argc, char* argv[])
 {
     std::locale::global(std::locale(""));
 
-    std::string wordlist_path = "../wordlist-parser/wordlist.txt";
-    if (argc > 1) wordlist_path = argv[1];
-
-    std::cout << "Loading word list from: " << wordlist_path << std::endl;
+    std::string lexicon_path = "../wordlist-parser/lexicon.tsv";
+    if (argc > 1) lexicon_path = argv[1];
 
     utils::Timer timer;
     timer.start();
-    WordUtil wordUtil(wordlist_path);
+    loadLexicon(lexicon_path);
+    dictionaryFor(Rules{});  // warm the default (no rules) dictionary
     timer.stop();
-    std::cout << "Word list loaded in " << timer.getMs() << " ms" << std::endl;
-
-    g_wordUtil = &wordUtil;
-
-    // argv[2]: the everyday-words list for "common" mode.
-    std::unique_ptr<WordUtil> commonWordUtil;
-    if (argc > 2)
-    {
-        std::cout << "Loading common word list from: " << argv[2] << std::endl;
-        commonWordUtil = std::make_unique<WordUtil>(argv[2]);
-        g_commonWordUtil = commonWordUtil.get();
-    }
+    std::cout << "Ready in " << timer.getMs() << " ms" << std::endl;
 
     // Create socket
     int server_fd = socket(AF_INET, SOCK_STREAM, 0);

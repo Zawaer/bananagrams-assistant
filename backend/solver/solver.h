@@ -39,6 +39,8 @@ class WordUtil
 public:
     WordUtil() : longest_word_length(1) {}
     WordUtil(const std::string& wordlist_filename);
+    // Build from an in-memory list (the solver's per-rules dictionaries).
+    WordUtil(std::vector<std::wstring> list, const std::string& name);
 
     // Kept for compatibility: first word of `length` makeable from `hand`.
     std::wstring getWordWithLength(const std::wstring& hand, int length) const;
@@ -65,6 +67,11 @@ public:
     std::vector<WordEntry> entries;
     std::vector<int> length_start;   // length_start[L] = first entry with length <= L
     std::unordered_map<wchar_t, int> letter_index;
+
+private:
+    void build();
+
+public:
     std::unordered_set<std::wstring> word_set;
 };
 
@@ -92,19 +99,36 @@ WordUtil::WordUtil(const std::string& wordlist_filename)
 #endif
 
     std::wstring line;
-    std::map<wchar_t, int> frequency_map;
-
     while (std::getline(stream, line))
     {
         while (!line.empty() && std::iswspace(line.back()))
             line.pop_back();
+        words.emplace_back(line);
+    }
+    build();
+}
 
+WordUtil::WordUtil(std::vector<std::wstring> list, const std::string& name)
+    : wordlist_filename(name), longest_word_length(1)
+{
+    words = std::move(list);
+    build();
+}
+
+void WordUtil::build()
+{
+    std::map<wchar_t, int> frequency_map;
+    std::vector<std::wstring> kept;
+    kept.reserve(words.size());
+
+    for (const auto& line : words)
+    {
         if (line.length() < 2) continue;
 
         if ((int)line.length() > longest_word_length)
             longest_word_length = (int)line.length();
 
-        words.emplace_back(line);
+        kept.emplace_back(line);
         word_set.insert(line);
         anagrams[utils::sort(line)].emplace_back(line);
 
@@ -112,6 +136,7 @@ WordUtil::WordUtil(const std::string& wordlist_filename)
             if (!std::iswspace(letter))
                 frequency_map[letter]++;
     }
+    words = std::move(kept);
 
     letter_frequencies = std::vector<std::pair<wchar_t, int>>(frequency_map.begin(), frequency_map.end());
     std::sort(letter_frequencies.begin(), letter_frequencies.end(),
