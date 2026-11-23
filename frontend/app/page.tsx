@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { detect, solve, solveLive, warmDetector, type SolveFrame, type SolveResult } from "./lib/api";
 import { SearchViz } from "./components/SearchViz";
 import { DEFAULT_RULES, rulesKey, summarize, withDefaults, type Rules } from "./lib/rules";
@@ -12,6 +12,7 @@ import { LetterPad } from "./components/LetterPad";
 import { Sheet } from "./components/Sheet";
 import { SolutionBoard } from "./components/SolutionBoard";
 import { Tile } from "./components/Tile";
+import { WordDefinition } from "./components/WordDefinition";
 import { SolveStats, visionStats, type VisionStats } from "./components/SolveStats";
 
 // ============================================================================
@@ -1083,7 +1084,8 @@ function SolvedView({
   settled?: boolean;
   stats?: React.ReactNode;
 }) {
-  const runs = wordRuns(solution.grid);
+  // Kept across renders: `picked` is one of these, compared by identity.
+  const runs = useMemo(() => wordRuns(solution.grid), [solution.grid]);
   const [picked, setPicked] = useState<WordRun | null>(null);
   const highlight = new Set(picked?.cells.map(([y, x]) => `${y}-${x}`));
 
@@ -1131,16 +1133,19 @@ function SolvedView({
           ) : null;
         })}
         {picked ? (
-          <div className="ban-bar">
-            <span>
-              <strong>{picked.word}</strong> <span className="muted">not allowed?</span>
-            </span>
-            <button type="button" className="btn btn-secondary btn-sm" onClick={() => onBan(picked.word)}>
-              Ban word
-            </button>
-          </div>
+          <>
+            <div className="ban-bar">
+              <span>
+                <strong>{picked.word}</strong> <span className="muted">not allowed?</span>
+              </span>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => onBan(picked.word)}>
+                Ban word
+              </button>
+            </div>
+            <WordDefinition word={picked.word} />
+          </>
         ) : (
-          <p className="hint">Tap a word to ban it.</p>
+          <p className="hint">Tap a word to see what it means, or to ban it.</p>
         )}
       </div>
     </>

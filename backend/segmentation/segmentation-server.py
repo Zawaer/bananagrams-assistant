@@ -8,6 +8,8 @@ import urllib.request
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 
+import ks_define
+
 # cv2, numpy, supervision and ultralytics are imported inside detect(): see
 # MODEL LOADING below for why the idle process keeps them out of memory.
 
@@ -192,6 +194,22 @@ def _annotate(image, detections, model):
 @app.route("/health", methods=["GET"])
 def health():
     return jsonify({"status": "ok"})
+
+
+@app.route("/define", methods=["GET"])
+def define():
+    """A word's meanings from Kielitoimiston sanakirja (see ks_define.py).
+    Has nothing to do with the model and never loads it."""
+    word = (request.args.get("word") or "").strip().lower()
+    if not ks_define.valid(word):
+        return jsonify({"error": "Not a word."}), 400
+    try:
+        return jsonify(ks_define.define(word))
+    except ks_define.Busy:
+        return jsonify({"error": "The dictionary is busy. Try again in a minute."}), 503
+    except ks_define.Unavailable as e:
+        print(f"/define {word}: {e}", flush=True)
+        return jsonify({"error": "Couldn't reach the dictionary."}), 502
 
 
 @app.route("/warm", methods=["POST"])

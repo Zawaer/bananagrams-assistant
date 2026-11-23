@@ -215,3 +215,50 @@ export async function solveLive(
     throw new Error(describe(e, "solver"));
   }
 }
+
+/** A meaning of a word in Kielitoimiston sanakirja. Empty fields are left out. */
+export type DefinitionSense = {
+  /** "1", "a", or "" for an unnumbered one (labelled "Kuv.", "Erik." and so on). */
+  num: string;
+  pos?: string;
+  labels?: string[];
+  text: string;
+  examples?: string[];
+  senses?: DefinitionSense[];
+};
+
+/** One homonym: "eno" has two, uncle and river. */
+export type DefinitionEntry = {
+  /** 1, 2, ... when the word has homonyms, else 0. */
+  homonym: number;
+  pos?: string;
+  /** Usage labels that cover the whole word: "ark.", "slg." */
+  labels?: string[];
+  /** A gloss for the whole word, before its numbered meanings. */
+  text?: string;
+  examples?: string[];
+  senses: DefinitionSense[];
+};
+
+export type Definition = {
+  word: string;
+  found: boolean;
+  entries: DefinitionEntry[];
+  source: "local" | "cache" | "ks";
+};
+
+// A word's meanings, looked up by the detection server (which keeps every
+// answer, so a word is fetched from the dictionary only once).
+export async function define(word: string, signal?: AbortSignal): Promise<Definition> {
+  try {
+    const res = await fetch(`${DETECTION_SERVER}/define?word=${encodeURIComponent(word.toLowerCase())}`, {
+      signal,
+    });
+    const body = await res.json().catch(() => null);
+    if (!res.ok) throw new Error(body?.error ?? `The dictionary lookup failed (${res.status}).`);
+    return body as Definition;
+  } catch (e) {
+    if (signal?.aborted) throw e;
+    throw new Error(describe(e, "dictionary"));
+  }
+}

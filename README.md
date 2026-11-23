@@ -370,6 +370,23 @@ The request body may use raw UTF-8 or `\uXXXX` escapes for `ä` and `ö`. Both d
 }
 ```
 
+`GET /define?word=paku` returns the word's meanings from [Kielitoimiston sanakirja](https://www.kielitoimistonsanakirja.fi/) (Kotus), shown when a word is picked on the solved board. It has nothing to do with the model and never loads it (`backend/segmentation/ks_define.py`).
+
+```jsonc
+{
+  "word": "paku",
+  "found": true, // false: not a headword of its own (entries is then empty)
+  "entries": [
+    // one per homonym (homonym 1, 2, ... or 0 when there is only one); empty fields are left out
+    { "homonym": 0, "pos": "substantiivi", "labels": ["ark."], "text": "pakettiauto.",
+      "senses": [{ "num": "1", "labels": [], "text": "...", "examples": ["..."], "senses": [] }] }
+  ],
+  "source": "ks" // or "cache", "local"
+}
+```
+
+Each word is fetched from the site once (one request) and the answer kept in `DEFINE_CACHE_DIR` (`/models/ks-define` in Docker, in the persistent volume), "not found" included. If `KS_LOCAL_DIR` points at a local copy of the dictionary (`crawl-ks.py`'s cache: one raw search response per word), words found there never reach the site. The site rate-limits; when it does, the answer is a 503 ("busy, try again in a minute") and the server leaves the site alone for 90 seconds. The dictionary is copyrighted: neither directory is ever committed.
+
 ---
 
 ## Configuration

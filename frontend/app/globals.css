@@ -767,6 +767,59 @@ kbd {
   border-top: 1.5px solid var(--line);
 }
 
+/* The picked word's meanings, from Kielitoimiston sanakirja: set like a
+   dictionary page, with the usage labels as small tags. */
+.define { display: flex; flex-direction: column; gap: 10px; padding-top: 4px; animation: fade 0.2s; }
+.define-loading { display: flex; align-items: center; gap: 8px; }
+.define-spinner {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  border: 2px solid var(--paper-deep);
+  border-top-color: var(--ink);
+  animation: spin 0.8s linear infinite;
+}
+.define-entry { display: flex; flex-direction: column; gap: 5px; }
+.define-entry + .define-entry { padding-top: 10px; border-top: 1px dashed var(--line); }
+.define-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; }
+.define-word { font-family: var(--font-display); font-weight: 800; font-size: 1.1rem; letter-spacing: -0.01em; }
+.define-word sup { font-size: 0.62em; margin-left: 1px; }
+.define-pos { font-style: italic; color: var(--ink-soft); font-size: 0.88rem; margin-right: 6px; }
+.define-label {
+  display: inline-block;
+  background: var(--amber-bg);
+  color: var(--amber-ink);
+  border-radius: 6px;
+  padding: 0 6px;
+  margin-right: 6px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.5;
+}
+.define-text { font-size: 0.92rem; line-height: 1.45; }
+.define-examples { font-size: 0.85rem; line-height: 1.45; color: var(--ink-soft); font-style: italic; }
+.define-senses { display: flex; flex-direction: column; gap: 7px; margin-top: 2px; }
+.define-sense { display: flex; gap: 8px; }
+.define-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.define-num {
+  flex: none;
+  min-width: 1.1rem;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 0.85rem;
+  line-height: 1.6;
+}
+.define-senses .define-senses { gap: 5px; }
+.define-more { align-self: flex-start; font-size: 0.85rem; }
+.define-missing { font-weight: 700; color: var(--ink); }
+.define-source {
+  align-self: flex-end;
+  font-size: 0.75rem;
+  color: var(--ink-soft);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .btn-sm { min-height: 38px; padding: 6px 14px; font-size: 0.9rem; box-shadow: 0 2px 0 var(--ink); }
 
 .text-input {

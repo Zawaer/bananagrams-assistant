@@ -31,6 +31,12 @@ services:
       - MODEL_CACHE_PATH=/models/model.onnx
       # Drop the model from memory after this long without a photo.
       - IDLE_UNLOAD_SECONDS=${IDLE_UNLOAD_SECONDS:-600}
+      # Word definitions (tap a word on the solved board) are fetched from
+      # Kielitoimiston sanakirja once per word and kept here, in the volume.
+      - DEFINE_CACHE_DIR=/models/ks-define
+      # With a local copy of the dictionary (crawl-ks.py's cache), mount it
+      # read-only, e.g. at /ks-local, and set KS_LOCAL_DIR=/ks-local: words
+      # found there never reach the site. Never commit that copy.
     volumes:
       - models:/models
     restart: unless-stopped
