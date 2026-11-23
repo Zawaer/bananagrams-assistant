@@ -329,24 +329,8 @@ export default function Home() {
     return () => window.removeEventListener("paste", onPaste);
   }, [pasteTarget]);
 
-  const [canPaste, setCanPaste] = useState(false);
   const [isMac, setIsMac] = useState(false);
-  useEffect(() => {
-    setCanPaste(!!navigator.clipboard?.read);
-    setIsMac(/Mac|iPhone|iPad/.test(navigator.userAgent));
-  }, []);
-
-  const pasteFromClipboard = async (target: "hand" | "draw") => {
-    try {
-      for (const item of await navigator.clipboard.read()) {
-        const type = item.types.find((t) => t.startsWith("image/"));
-        if (type) return scanImage(await item.getType(type), target);
-      }
-      setError("There's no image on the clipboard. Copy a photo of your tiles first.");
-    } catch {
-      setError(`Couldn't read the clipboard. Allow clipboard access, or press ${isMac ? "⌘V" : "Ctrl+V"}.`);
-    }
-  };
+  useEffect(() => setIsMac(/Mac|iPhone|iPad/.test(navigator.userAgent)), []);
 
   const cancelScan = () => {
     abortRef.current?.abort();
@@ -630,6 +614,7 @@ export default function Home() {
               </div>
               <p className="hint">Used to check the photo didn&apos;t miss a tile.</p>
               <RulesButton rules={rules} onClick={openRules} />
+              <WatchSwitch on={watch} onToggle={toggleWatch} />
             </div>
 
             {error && <div className="alert alert-danger">{error}</div>}
@@ -638,21 +623,16 @@ export default function Home() {
               <button type="button" className="btn btn-primary btn-lg" onClick={() => pickPhoto("hand", true)}>
                 <CameraIcon /> Take a photo
               </button>
-              <div className="row">
-                <button type="button" className="btn btn-secondary" onClick={() => pickPhoto("hand", false)}>
-                  <ImageIcon /> Library
+              <button type="button" className="btn btn-secondary" onClick={() => pickPhoto("hand", false)}>
+                <ImageIcon /> Choose from library
+              </button>
+              <p className="hint center">
+                <button type="button" className="link-btn" onClick={typeHand}>
+                  Type the letters instead
                 </button>
-                {canPaste && (
-                  <button type="button" className="btn btn-secondary" onClick={() => pasteFromClipboard("hand")}>
-                    <PasteIcon /> Paste
-                  </button>
-                )}
-                <button type="button" className="btn btn-secondary" onClick={typeHand}>
-                  <KeysIcon /> Type
-                </button>
-              </div>
-              <p className="hint center paste-hint">
-                Or paste a picture with <kbd>{isMac ? "⌘" : "Ctrl"}</kbd> <kbd>V</kbd>
+                <span className="paste-hint">
+                  {" "}· or paste a picture with <kbd>{isMac ? "⌘" : "Ctrl"}</kbd> <kbd>V</kbd>
+                </span>
               </p>
             </div>
 
@@ -773,12 +753,7 @@ export default function Home() {
               >
                 Solve {count >= 2 ? `${count} tiles` : ""}
               </button>
-              <button type="button" role="switch" aria-checked={watch} className="toggle-row watch-row" onClick={toggleWatch}>
-                <span className="strong">Watch the search</span>
-                <span className={watch ? "switch switch-on" : "switch"} aria-hidden>
-                  <span className="switch-knob" />
-                </span>
-              </button>
+              <WatchSwitch on={watch} onToggle={toggleWatch} compact />
               <div className="row">
                 <button type="button" className="btn btn-secondary" onClick={() => pickPhoto("hand", true)}>
                   <CameraIcon /> Retake
@@ -968,11 +943,9 @@ export default function Home() {
                 <button type="button" className="btn btn-secondary" onClick={() => pickPhoto("draw", true)}>
                   <CameraIcon /> Photograph them
                 </button>
-                {canPaste && (
-                  <button type="button" className="btn btn-secondary" onClick={() => pasteFromClipboard("draw")}>
-                    <PasteIcon /> Paste
-                  </button>
-                )}
+                <button type="button" className="btn btn-secondary" onClick={() => pickPhoto("draw", false)}>
+                  <ImageIcon /> Library
+                </button>
               </div>
             </div>
           </section>
@@ -1154,6 +1127,26 @@ function SolvedView({
   );
 }
 
+function WatchSwitch({ on, onToggle, compact }: { on: boolean; onToggle: () => void; compact?: boolean }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      className={compact ? "toggle-row watch-row" : "toggle-row watch-row watch-row-card"}
+      onClick={onToggle}
+    >
+      <span className="stack-sm">
+        <span className="rules-title">Watch the search</span>
+        {!compact && <span className="hint">Show the solver&apos;s board while it works.</span>}
+      </span>
+      <span className={on ? "switch switch-on" : "switch"} aria-hidden>
+        <span className="switch-knob" />
+      </span>
+    </button>
+  );
+}
+
 function RulesButton({ rules, onClick, compact }: { rules: Rules; onClick: () => void; compact?: boolean }) {
   return (
     <button type="button" className={compact ? "rules-btn rules-btn-compact" : "rules-btn"} onClick={onClick}>
@@ -1213,20 +1206,3 @@ function ImageIcon() {
   );
 }
 
-function PasteIcon() {
-  return (
-    <svg {...iconProps}>
-      <rect x="5" y="4" width="14" height="17" rx="2" />
-      <path d="M9 4V3h6v1M9 11h6M9 15h4" />
-    </svg>
-  );
-}
-
-function KeysIcon() {
-  return (
-    <svg {...iconProps}>
-      <rect x="2.5" y="6" width="19" height="12" rx="2" />
-      <path d="M7 10h.01M11 10h.01M15 10h.01M7 14h10" />
-    </svg>
-  );
-}

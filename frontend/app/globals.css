@@ -868,3 +868,16 @@ kbd {
 .brand-compact > span { display: none; }
 .topbar { gap: 10px; }
 .topbar > .ghost-btn { margin-left: auto; }
+
+.watch-row-card { padding: 12px 0 0; border-top: 1.5px solid var(--line); }
+.link-btn {
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: var(--ink);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
