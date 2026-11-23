@@ -1,13 +1,22 @@
 import type { Metadata, Viewport } from "next";
-import { Bricolage_Grotesque, Geist } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 
-const body = Geist({ variable: "--font-body", subsets: ["latin"] });
+// Self-hosted so the build never has to reach Google Fonts. Both files are the Latin
+// subset (covers ä, ö, å) of the variable fonts as served by Google Fonts (Geist v5,
+// Bricolage Grotesque v9), under the SIL Open Font License (see app/fonts/OFL-*.txt).
+const body = localFont({
+  variable: "--font-body",
+  src: "./fonts/Geist-Variable-latin.woff2",
+  weight: "100 900",
+});
 // A display face with some character, for headings and the tile letters.
-const display = Bricolage_Grotesque({
+const display = localFont({
   variable: "--font-display",
-  subsets: ["latin"],
-  weight: ["600", "800"],
+  src: [
+    { path: "./fonts/BricolageGrotesque-Variable-latin.woff2", weight: "600" },
+    { path: "./fonts/BricolageGrotesque-Variable-latin.woff2", weight: "800" },
+  ],
 });
 
 export const metadata: Metadata = {
