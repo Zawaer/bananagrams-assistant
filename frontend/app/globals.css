@@ -272,14 +272,16 @@ button {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  /* The original tile look: flat wheat, tan border, plain bold letters. */
-  background: #f5deb3;
-  border: 2px solid #d2b48c;
-  color: #2c1810;
-  font-family: Arial, Helvetica, sans-serif;
+  background: linear-gradient(var(--tile-top), var(--tile-bottom));
+  border: 1px solid var(--tile-edge);
+  color: var(--tile-ink);
+  font-family: var(--font-display);
   font-weight: 800;
   line-height: 1;
-  box-shadow: 1px 2px 3px rgba(0, 0, 0, 0.3);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.9) inset,
+    0 2px 0 var(--tile-edge),
+    0 4px 8px -3px rgba(60, 40, 10, 0.35);
   user-select: none;
 }
 
@@ -289,7 +291,7 @@ button {
   transition: transform 100ms ease, box-shadow 100ms ease;
 }
 .tile-button:hover { transform: translateY(-2px); }
-.tile-button:active { transform: translateY(1px); box-shadow: 0 1px 1px rgba(0, 0, 0, 0.3); }
+.tile-button:active { transform: translateY(1px); box-shadow: 0 1px 0 var(--tile-edge); }
 
 .tile-selected {
   outline: 3px solid var(--ink);
@@ -349,7 +351,7 @@ button {
   border-radius: 9px;
   border: 1px solid var(--line);
   background: #fff;
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-display);
   font-weight: 800;
   font-size: 1.15rem;
   cursor: pointer;
