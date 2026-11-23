@@ -14,7 +14,10 @@ export function SolutionBoard({
   grid,
   highlight,
   onTileClick,
+  settled,
 }: {
+  /** Skip the drop-in: the board was just built in front of the user. */
+  settled?: boolean;
   grid: Grid;
   /** "y-x" keys of tiles to highlight (the selected word). */
   highlight?: Set<string>;
@@ -57,8 +60,8 @@ export function SolutionBoard({
                 size={size}
                 highlight={highlight?.has(`${y}-${x}`)}
                 onClick={onTileClick ? () => onTileClick(y, x) : undefined}
-                className="tile-drop"
-                style={{ animationDelay: `${(x + y) * 25}ms` }}
+                className={settled ? "" : "tile-drop"}
+                style={settled ? undefined : { animationDelay: `${(x + y) * 25}ms` }}
               />
             ) : (
               <div key={`${y}-${x}`} />

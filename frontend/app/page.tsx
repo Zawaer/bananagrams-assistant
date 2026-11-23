@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { detect, solve, warmDetector, type SolveResult } from "./lib/api";
+import { detect, solve, solveLive, warmDetector, type SolveFrame, type SolveResult } from "./lib/api";
+import { SearchViz } from "./components/SearchViz";
 import { DEFAULT_RULES, rulesKey, summarize, type Rules } from "./lib/rules";
 import { RulesSheet } from "./components/RulesSheet";
 import { PhotoOverlay, type Photo } from "./components/PhotoOverlay";
@@ -51,6 +52,7 @@ const DRAW_COUNT = 3;
 const DOUBTFUL = 0.9;
 const STORAGE_KEY = "bananagrams-game-v2";
 const RULES_KEY = "bananagrams-rules";
+const WATCH_KEY = "bananagrams-watch-search";
 
 let nextId = 1;
 const toTiles = (letters: string[], conf?: number[]): HandTile[] =>
@@ -169,6 +171,8 @@ export default function Home() {
     if (game.hand.length && phase !== "start" && !confirm("Start a new game? This hand will be cleared.")) return;
     abortRef.current?.abort();
     dumpAbort.current?.abort();
+    solveAbort.current?.abort();
+    setArrived(null);
     setGame(emptyGame(game.expected));
     setDumpCheck(null);
     setError(null);
@@ -282,21 +286,60 @@ export default function Home() {
     setAdding(true);
   };
 
+  // "Watch the search" (off by default, kept across games): the solve is
+  // streamed so the search can be shown (SearchViz), and the result is held
+  // back until the board on screen has caught up with it. Off, solving is
+  // the plain request it always was.
+  const [watch, setWatch] = useState(false);
+  const watchRef = useRef(watch);
+  watchRef.current = watch;
+  useEffect(() => setWatch(localStorage.getItem(WATCH_KEY) === "1"), []);
+  const toggleWatch = () => {
+    setWatch(!watch);
+    localStorage.setItem(WATCH_KEY, watch ? "0" : "1");
+  };
+  const [liveFrame, setLiveFrame] = useState<SolveFrame | null>(null);
+  const [arrived, setArrived] = useState<{ result: SolveResult; key: string } | null>(null);
+  const [settled, setSettled] = useState(false);
+  const solveAbort = useRef<AbortController | null>(null);
+
   const runSolve = useCallback(async (hand: string[]) => {
     setError(null);
     setPhase("solving");
     dumpAbort.current?.abort();
     setDumpCheck(null);
+    solveAbort.current?.abort();
+    const ctrl = new AbortController();
+    solveAbort.current = ctrl;
+    setLiveFrame(null);
+    setArrived(null);
     try {
-      const key = rulesKey(rulesRef.current);
-      const result = await solve(hand, rulesRef.current);
-      setGame((g) => ({ ...g, solution: result, solvedFor: `${key}:${sortLetters(hand).join("")}` }));
-      setPhase("result");
+      const key = `${rulesKey(rulesRef.current)}:${sortLetters(hand).join("")}`;
+      if (watchRef.current) {
+        const result = await solveLive(hand, rulesRef.current, (f) => setLiveFrame(f), ctrl.signal);
+        if (!ctrl.signal.aborted) setArrived({ result, key });
+      } else {
+        const result = await solve(hand, rulesRef.current, ctrl.signal);
+        if (ctrl.signal.aborted) return;
+        setGame((g) => ({ ...g, solution: result, solvedFor: key }));
+        setSettled(false);
+        setPhase("result");
+      }
     } catch (err) {
+      if (ctrl.signal.aborted) return;
       setError(err instanceof Error ? err.message : "Solving failed.");
       setPhase("hand");
     }
   }, []);
+
+  const finishSolve = useCallback(() => {
+    if (!arrived) return;
+    setGame((g) => ({ ...g, solution: arrived.result, solvedFor: arrived.key }));
+    setSettled(!!arrived.result.trace);
+    setArrived(null);
+    setLiveFrame(null);
+    setPhase("result");
+  }, [arrived]);
 
   // Changing the rules on the result screen re-solves the same hand.
   const openRules = () => {
@@ -648,6 +691,12 @@ export default function Home() {
               >
                 Solve {count >= 2 ? `${count} tiles` : ""}
               </button>
+              <button type="button" role="switch" aria-checked={watch} className="toggle-row watch-row" onClick={toggleWatch}>
+                <span className="strong">Watch the search</span>
+                <span className={watch ? "switch switch-on" : "switch"} aria-hidden>
+                  <span className="switch-knob" />
+                </span>
+              </button>
               <div className="row">
                 <button type="button" className="btn btn-secondary" onClick={() => pickPhoto("hand", true)}>
                   <CameraIcon /> Retake
@@ -666,7 +715,7 @@ export default function Home() {
         )}
 
         {/* ── SOLVING ───────────────────────────────────────────────────── */}
-        {phase === "solving" && (
+        {phase === "solving" && !watch && (
           <section className="stack-lg center fade-in pt-10">
             <div className="rack rack-center">
               {game.hand.map((t, i) => (
@@ -677,13 +726,24 @@ export default function Home() {
             <p className="muted small">Hard hands can take up to 5 seconds.</p>
           </section>
         )}
+        {phase === "solving" && watch && (
+          <section className="stack-lg fade-in">
+            <div className="center stack-sm">
+              <h2 className="title-sm">Solving {count} tiles</h2>
+              {liveFrame && !arrived && (
+                <p className="muted small">{(liveFrame.ms / 1000).toFixed(1)} s · hard hands take up to 5 s</p>
+              )}
+            </div>
+            <SearchViz letters={letters} live={liveFrame} result={arrived?.result ?? null} onDone={finishSolve} />
+          </section>
+        )}
 
         {/* ── RESULT ────────────────────────────────────────────────────── */}
         {phase === "result" && solution && solutionCurrent && (
           <section className="stack-lg fade-in">
             <RulesButton rules={rules} onClick={openRules} compact />
             {solution.solved ? (
-              <SolvedView solution={solution} count={count} onBan={setBanWord} />
+              <SolvedView solution={solution} count={count} onBan={setBanWord} settled={settled} />
             ) : (
               <>
                 <div className="center stack-sm">
@@ -943,10 +1003,12 @@ function SolvedView({
   solution,
   count,
   onBan,
+  settled,
 }: {
   solution: SolveResult;
   count: number;
   onBan: (word: string) => void;
+  settled?: boolean;
 }) {
   const runs = wordRuns(solution.grid);
   const [picked, setPicked] = useState<WordRun | null>(null);
@@ -970,7 +1032,7 @@ function SolvedView({
         </p>
       </div>
       <div className="board">
-        <SolutionBoard grid={solution.grid} highlight={highlight} onTileClick={onTileClick} />
+        <SolutionBoard grid={solution.grid} highlight={highlight} onTileClick={onTileClick} settled={settled} />
       </div>
       <div className="card stack-sm">
         {(["across", "down"] as const).map((dir) => {

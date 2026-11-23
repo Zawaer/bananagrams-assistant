@@ -36,6 +36,34 @@ export type SolveResult = {
   solved: boolean;
   time_ms: number;
   grid: (string | null)[][];
+  /** Only when asked for (`solveLive`). */
+  trace?: SolveTrace;
+};
+
+/** A word laid on the solver's board: [word, row, col, 1 = across / 0 = down]. */
+export type Placement = [string, number, number, 0 | 1];
+
+export type SolveTrace = {
+  /** Placements the search tried in all. */
+  nodes: number;
+  /** The first few hundred steps of the search: a placement, or 0 for taking the last one back. */
+  events: (Placement | 0)[];
+  /** True when the search went on past the recorded steps. */
+  truncated: boolean;
+  /** The solution, in the order it was built (empty when unsolved). */
+  path: Placement[];
+  /** The board that used the most tiles, and how many. */
+  closest: Placement[];
+  closest_tiles: number;
+};
+
+/** A snapshot of the search in progress, sent every ~80 ms by a streamed solve. */
+export type SolveFrame = {
+  ms: number;
+  nodes: number;
+  /** Most tiles any board has used so far. */
+  best: number;
+  path: Placement[];
 };
 
 function describe(e: unknown, what: string) {
@@ -101,6 +129,50 @@ export async function solve(letters: string[], rules: Rules, signal?: AbortSigna
     });
     if (!res.ok) throw new Error(`The solver failed (${res.status}).`);
     return await res.json();
+  } catch (e) {
+    if (signal?.aborted) throw e;
+    throw new Error(describe(e, "solver"));
+  }
+}
+
+// The same solve, streamed: the solver sends a snapshot of its board every
+// ~80 ms while it searches (only slow hands last long enough to send any),
+// then the result with a trace of the search to replay.
+export async function solveLive(
+  letters: string[],
+  rules: Rules,
+  onFrame: (f: SolveFrame) => void,
+  signal?: AbortSignal
+): Promise<SolveResult> {
+  try {
+    const res = await fetch(`${SOLVER_SERVER}/solve`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ letters: letters.join(""), ...rulesToWire(rules), stream: "1" }),
+      signal,
+    });
+    if (!res.ok) throw new Error(`The solver failed (${res.status}).`);
+    if (!res.body) return await res.json();
+    const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+    let buffer = "";
+    let result: SolveResult | null = null;
+    const take = (line: string) => {
+      if (!line.trim()) return;
+      const msg = JSON.parse(line);
+      if (msg.frame) onFrame(msg.frame);
+      else result = msg;
+    };
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += value;
+      const lines = buffer.split("\n");
+      buffer = lines.pop()!;
+      lines.forEach(take);
+    }
+    take(buffer);
+    if (!result) throw new Error("The solver stopped before answering.");
+    return result;
   } catch (e) {
     if (signal?.aborted) throw e;
     throw new Error(describe(e, "solver"));
