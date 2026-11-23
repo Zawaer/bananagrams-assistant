@@ -12,6 +12,7 @@ import { LetterPad } from "./components/LetterPad";
 import { Sheet } from "./components/Sheet";
 import { SolutionBoard } from "./components/SolutionBoard";
 import { Tile } from "./components/Tile";
+import { SolveStats, visionStats, type VisionStats } from "./components/SolveStats";
 
 // ============================================================================
 // Game model
@@ -38,6 +39,10 @@ type Game = {
   drawn: string[];
   dumped: string | null;
   history: string[];
+  /** How the hand was read, when it came from a photo (for the stats). */
+  vision: VisionStats | null;
+  /** The latest solve's round trip, as measured here. */
+  solveMs: number | null;
 };
 
 type DumpCheck = {
@@ -74,6 +79,8 @@ const emptyGame = (expected: number | null): Game => ({
   drawn: [],
   dumped: null,
   history: [],
+  vision: null,
+  solveMs: null,
 });
 
 // ============================================================================
@@ -293,6 +300,7 @@ export default function Home() {
             : null,
           solution: null,
           solvedFor: null,
+          vision: visionStats(result, g.expected),
         }));
         setPhase("hand");
         // Open the photo straight away when there's something to check on it.
@@ -357,7 +365,7 @@ export default function Home() {
     localStorage.setItem(WATCH_KEY, watch ? "0" : "1");
   };
   const [liveFrame, setLiveFrame] = useState<SolveFrame | null>(null);
-  const [arrived, setArrived] = useState<{ result: SolveResult; key: string } | null>(null);
+  const [arrived, setArrived] = useState<{ result: SolveResult; key: string; ms: number } | null>(null);
   const [settled, setSettled] = useState(false);
   const solveAbort = useRef<AbortController | null>(null);
 
@@ -373,13 +381,15 @@ export default function Home() {
     setArrived(null);
     try {
       const key = `${rulesKey(rulesRef.current)}:${sortLetters(hand).join("")}`;
+      const started = performance.now();
       if (watchRef.current) {
         const result = await solveLive(hand, rulesRef.current, (f) => setLiveFrame(f), ctrl.signal);
-        if (!ctrl.signal.aborted) setArrived({ result, key });
+        if (!ctrl.signal.aborted) setArrived({ result, key, ms: performance.now() - started });
       } else {
         const result = await solve(hand, rulesRef.current, ctrl.signal);
         if (ctrl.signal.aborted) return;
-        setGame((g) => ({ ...g, solution: result, solvedFor: key }));
+        const ms = performance.now() - started;
+        setGame((g) => ({ ...g, solution: result, solvedFor: key, solveMs: ms }));
         setSettled(false);
         setPhase("result");
       }
@@ -392,7 +402,7 @@ export default function Home() {
 
   const finishSolve = useCallback(() => {
     if (!arrived) return;
-    setGame((g) => ({ ...g, solution: arrived.result, solvedFor: arrived.key }));
+    setGame((g) => ({ ...g, solution: arrived.result, solvedFor: arrived.key, solveMs: arrived.ms }));
     setSettled(!!arrived.result.trace);
     setArrived(null);
     setLiveFrame(null);
@@ -478,6 +488,7 @@ export default function Home() {
         solution: null,
         solvedFor: null,
         photo: null,
+        vision: null,
       };
     });
     setError(null);
@@ -530,6 +541,9 @@ export default function Home() {
   const solution = game.solution;
   const solutionCurrent = solution && game.solvedFor === handKey;
   const doubtfulCount = game.hand.filter((t) => (t.conf ?? 1) < DOUBTFUL).length;
+  const stats = solution && (
+    <SolveStats solution={solution} solveMs={game.solveMs ?? null} vision={game.vision ?? null} dumps={game.history.length} />
+  );
 
   return (
     <div className="app">
@@ -800,11 +814,13 @@ export default function Home() {
           <section className="stack-lg fade-in">
             <RulesButton rules={rules} onClick={openRules} compact />
             {solution.solved ? (
-              <SolvedView solution={solution} count={count} onBan={setBanWord} settled={settled} />
+              <SolvedView solution={solution} count={count} onBan={setBanWord} settled={settled} stats={stats} />
             ) : (
               <>
                 <div className="center stack-sm">
-                  <h2 className="title-sm">No grid uses all {count} tiles</h2>
+                  <h2 className="title-sm stats-host">
+                    No grid uses all {count} tiles {stats}
+                  </h2>
                   <p className="muted small">
                     Dump one and take {DRAW_COUNT}, or fix a misread tile first.
                   </p>
@@ -1059,11 +1075,13 @@ function SolvedView({
   count,
   onBan,
   settled,
+  stats,
 }: {
   solution: SolveResult;
   count: number;
   onBan: (word: string) => void;
   settled?: boolean;
+  stats?: React.ReactNode;
 }) {
   const runs = wordRuns(solution.grid);
   const [picked, setPicked] = useState<WordRun | null>(null);
@@ -1081,7 +1099,9 @@ function SolvedView({
   return (
     <>
       <div className="center stack-sm">
-        <h2 className="title-sm">All {count} tiles placed</h2>
+        <h2 className="title-sm stats-host">
+          All {count} tiles placed {stats}
+        </h2>
         <p className="muted small">
           {runs.length} words · {formatMs(solution.time_ms)}
         </p>

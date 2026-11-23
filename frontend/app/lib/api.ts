@@ -22,7 +22,25 @@ export type DetectionResult = {
   image_size?: [number, number];
   count: number;
   timing?: { preprocess_ms: number; inference_ms: number; postprocess_ms: number; total_ms: number };
+  /** The model's own split of `timing.inference_ms`. */
+  yolo_timing?: { preprocess_ms: number; inference_ms: number; postprocess_ms: number };
+  /** Percent, 0-100. */
   avg_confidence?: number;
+  thresholds?: { nms: number; confidence: number };
+};
+
+/** An image's size in pixels and bytes. */
+export type ImageSize = { width: number; height: number; bytes: number };
+
+/** What the app measured around a detection, on top of what the server sent. */
+export type DetectionExtras = {
+  /** The image that was sent; the tile outlines are in its coordinates. */
+  image: Blob;
+  /** The picked photo, before shrinking (null if it couldn't be decoded here). */
+  original: ImageSize | null;
+  sent: ImageSize;
+  /** From sending the request to having the answer, in ms. */
+  roundTripMs: number;
 };
 
 export type DetectedTile = {
@@ -36,6 +54,12 @@ export type SolveResult = {
   solved: boolean;
   time_ms: number;
   grid: (string | null)[][];
+  /** Steps the search took (newer solvers only). */
+  nodes?: number;
+  /** True when the search gave up on its time or node budget. */
+  budget_hit?: boolean;
+  /** How many words the house rules allowed. */
+  dict_words?: number;
   /** Only when asked for (`solveLive`). */
   trace?: SolveTrace;
 };
@@ -81,38 +105,51 @@ export function warmDetector() {
 
 // Phone photos are 4-8 MB, and the model looks at a 640 px version anyway.
 // Shrinking before upload makes the round trip much quicker on a slow link.
-async function shrink(file: Blob, maxEdge = 1600): Promise<Blob> {
+async function shrink(
+  file: Blob,
+  maxEdge = 1600
+): Promise<{ image: Blob; original: ImageSize | null; width?: number; height?: number }> {
   try {
     const bitmap = await createImageBitmap(file);
+    const original = { width: bitmap.width, height: bitmap.height, bytes: file.size };
     const scale = Math.min(1, maxEdge / Math.max(bitmap.width, bitmap.height));
-    if (scale === 1 && file.size < 2_000_000) return file;
+    if (scale === 1 && file.size < 2_000_000) {
+      bitmap.close();
+      return { image: file, original, width: original.width, height: original.height };
+    }
     const canvas = document.createElement("canvas");
     canvas.width = Math.round(bitmap.width * scale);
     canvas.height = Math.round(bitmap.height * scale);
     canvas.getContext("2d")!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
     bitmap.close();
-    return await new Promise((resolve) =>
+    const image = await new Promise<Blob>((resolve) =>
       canvas.toBlob((b) => resolve(b ?? file), "image/jpeg", 0.9)
     );
+    return { image, original, width: canvas.width, height: canvas.height };
   } catch {
-    return file;
+    return { image: file, original: null };
   }
 }
 
 // Returns the detection along with the image that was actually sent, since
-// the tile outlines are in that image's coordinates.
+// the tile outlines are in that image's coordinates, and a few measurements
+// for the stats.
 export async function detect(
   file: Blob,
   signal?: AbortSignal
-): Promise<DetectionResult & { image: Blob }> {
-  const image = await shrink(file);
+): Promise<DetectionResult & DetectionExtras> {
+  const { image, original, width, height } = await shrink(file);
   const body = new FormData();
   body.append("image", image);
   body.append("annotate", "0");
   try {
+    const started = performance.now();
     const res = await fetch(`${DETECTION_SERVER}/detect`, { method: "POST", body, signal });
     if (!res.ok) throw new Error(`The tile reader failed (${res.status}).`);
-    return { ...(await res.json()), image };
+    const result: DetectionResult = await res.json();
+    const roundTripMs = performance.now() - started;
+    const [w, h] = result.image_size ?? [width ?? 0, height ?? 0];
+    return { ...result, image, original, sent: { width: w, height: h, bytes: image.size }, roundTripMs };
   } catch (e) {
     if (signal?.aborted) throw e;
     throw new Error(describe(e, "tile reader"));

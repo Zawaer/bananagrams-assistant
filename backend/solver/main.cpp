@@ -528,7 +528,11 @@ void handleClient(int client_fd)
         std::cout << (found ? "Solution found in " : "No solution found in ") << timer.getMs() << " ms" << std::endl;
         std::string resp = "{\"solved\":" + std::string(found ? "true" : "false") +
                            ",\"time_ms\":" + std::to_string(timer.getMs()) +
-                           ",\"grid\":" + (found ? gridToJson(board.getResultGrid()) : "[]");
+                           ",\"grid\":" + (found ? gridToJson(board.getResultGrid()) : "[]") +
+                           // Cheap numbers about the search, for the app's stats.
+                           ",\"nodes\":" + std::to_string(board.nodesVisited()) +
+                           ",\"budget_hit\":" + (board.hitBudget() ? "true" : "false") +
+                           ",\"dict_words\":" + std::to_string(dict->words.size());
         if (trace) resp += ",\"trace\":" + traceJson(board);
         resp += "}";
 
