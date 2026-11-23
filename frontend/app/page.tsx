@@ -51,6 +51,10 @@ const PRESETS = [10, 15, 21];
 const DRAW_COUNT = 3;
 const DOUBTFUL = 0.9;
 const STORAGE_KEY = "bananagrams-game-v2";
+
+/** The steps that get a browser history entry. */
+const STEPS: Phase[] = ["start", "hand", "result", "draw"];
+type NavState = { bgPhase: Phase; gen: number; depth: number };
 const RULES_KEY = "bananagrams-rules";
 const WATCH_KEY = "bananagrams-watch-search";
 
@@ -125,10 +129,13 @@ export default function Home() {
   const [dumpCheck, setDumpCheck] = useState<DumpCheck | null>(null);
   const dumpAbort = useRef<AbortController | null>(null);
 
-  // ── Persistence: a reload or a locked phone shouldn't lose the hand ───────
+  // ── Persistence: the game lives only as long as the tab ───────────────────
+  // sessionStorage survives a reload or a locked phone, but closing the site
+  // starts fresh. (Settings like house rules stay in localStorage.)
   useEffect(() => {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
+      localStorage.removeItem(STORAGE_KEY); // games used to be kept forever
+      const raw = sessionStorage.getItem(STORAGE_KEY);
       if (raw) {
         const saved = JSON.parse(raw) as { phase: Phase; game: Game };
         const hand = toTiles(lettersOf(saved.game.hand), saved.game.hand.map((t) => t.conf ?? 1));
@@ -148,8 +155,74 @@ export default function Home() {
     if (!restored) return;
     const { photo: _photo, ...rest } = game;
     void _photo;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ phase, game: rest }));
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ phase, game: rest }));
   }, [phase, game, restored]);
+
+  // ── Navigation: each step is a browser history entry ─────────────────────
+  // So the phone's back gesture (and the back button in the top bar) goes to
+  // the previous step instead of leaving the site. Scanning and solving are
+  // passing states and get no entry of their own. A new game starts a new
+  // "generation": going back into the previous game's steps is skipped.
+  const gameRef = useRef(game);
+  gameRef.current = game;
+  const generation = useRef(0);
+  const fromHistory = useRef(false);
+  const lastStable = useRef<Phase | null>(null);
+
+  useEffect(() => {
+    if (!restored || !STEPS.includes(phase)) return;
+    const prev = lastStable.current;
+    lastStable.current = phase;
+    if (fromHistory.current) {
+      fromHistory.current = false;
+      return;
+    }
+    const state = window.history.state as NavState | null;
+    if (state?.bgPhase === phase && state.gen === generation.current) return;
+    const next: NavState = {
+      bgPhase: phase,
+      gen: generation.current,
+      depth: state?.bgPhase && state.gen === generation.current ? state.depth + 1 : 0,
+    };
+    // The draw step is done once its tiles are in: replace it, so back from
+    // the new result goes to the tiles rather than an empty draw screen.
+    if (!state?.bgPhase || prev === "draw") window.history.replaceState(next, "");
+    else window.history.pushState(next, "");
+  }, [phase, restored]);
+
+  useEffect(() => {
+    const onPop = (e: PopStateEvent) => {
+      const state = e.state as NavState | null;
+      if (!state?.bgPhase) return;
+      abortRef.current?.abort();
+      setSelected(null);
+      setAdding(false);
+      setChoosingDump(false);
+      setRulesOpen(false);
+      setBanWord(null);
+      if (state.gen !== generation.current) {
+        // A step from an earlier game: stay on this game's start.
+        window.history.pushState({ bgPhase: "start", gen: generation.current, depth: 0 }, "");
+        return;
+      }
+      const g = gameRef.current;
+      let target = state.bgPhase;
+      if (target === "result" && !g.solution) target = "hand";
+      if (target === "draw" && g.dumped == null) target = "hand";
+      if (target === "hand" && g.hand.length === 0 && !g.solution) target = "start";
+      fromHistory.current = true;
+      setPhase(target);
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+
+  const goBack = () => {
+    const state = window.history.state as NavState | null;
+    if (state?.bgPhase && state.depth > 0) return window.history.back();
+    // Nothing of ours to go back to (e.g. after a reload): go up a level.
+    setPhase(phase === "draw" || phase === "result" ? "hand" : "start");
+  };
 
   // ── Elapsed timer while scanning, to explain a slow first read ───────────
   useEffect(() => {
@@ -173,6 +246,7 @@ export default function Home() {
     dumpAbort.current?.abort();
     solveAbort.current?.abort();
     setArrived(null);
+    generation.current += 1;
     setGame(emptyGame(game.expected));
     setDumpCheck(null);
     setError(null);
@@ -479,7 +553,15 @@ export default function Home() {
       <input ref={libraryInput} type="file" accept="image/*" hidden onChange={onPhoto} />
 
       <header className="topbar">
-        <div className="brand">
+        {phase !== "start" && phase !== "scanning" && phase !== "solving" ? (
+          <button type="button" className="back-btn" onClick={goBack} aria-label="Back">
+            <svg {...iconProps} width={22} height={22}>
+              <path d="M15 5l-7 7 7 7" />
+            </svg>
+            <span>{phase === "hand" ? "Start" : "Tiles"}</span>
+          </button>
+        ) : null}
+        <div className={phase === "start" ? "brand" : "brand brand-compact"}>
           <Tile letter="b" size={28} />
           <span>
             Bananagrams <span className="text-accent">Assistant</span>
