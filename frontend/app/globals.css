@@ -602,33 +602,32 @@ kbd {
   border-top: 1.5px solid var(--line);
   line-height: 0;
 }
-.overlay img { width: 100%; display: block; filter: saturate(0.85) brightness(0.92); }
+.overlay img { width: 100%; display: block; filter: saturate(0.8); }
 .overlay svg { position: absolute; inset: 0; width: 100%; height: 100%; }
 
 .ov-tile { cursor: pointer; }
 .ov-tile polygon {
-  fill: rgba(255, 250, 238, 0.06);
-  stroke: rgba(255, 250, 238, 0.95);
+  fill: var(--c);
+  fill-opacity: 0.32;
+  stroke: var(--c);
   stroke-linejoin: round;
-  paint-order: stroke;
-  filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.6));
-  transition: fill 120ms ease;
+  filter: drop-shadow(0 0 1.5px rgba(0, 0, 0, 0.55));
+  transition: fill-opacity 120ms ease;
 }
-.ov-tile circle { fill: var(--ink); stroke: rgba(255, 250, 238, 0.95); stroke-width: 2; }
+.ov-tile circle { fill: var(--c); stroke: var(--ink); }
 .ov-tile text {
-  fill: var(--tile-top);
+  fill: var(--ink);
   text-anchor: middle;
   font-family: var(--font-display);
   font-weight: 800;
   pointer-events: none;
 }
-.ov-tile:hover polygon { fill: rgba(255, 250, 238, 0.2); }
+.ov-tile:hover polygon { fill-opacity: 0.5; }
 
-.ov-tile.is-doubtful polygon { stroke: #ff6b4a; fill: rgba(255, 107, 74, 0.22); }
-.ov-tile.is-doubtful circle { fill: var(--berry); stroke: #fff; }
+/* Hard to read: dashed outline and a red ring on the badge. */
+.ov-tile.is-doubtful circle { stroke: #e5381b; }
 
-.ov-tile.is-selected polygon { stroke: var(--banana); fill: rgba(255, 210, 63, 0.4); }
-.ov-tile.is-selected circle { fill: var(--banana); stroke: var(--ink); }
-.ov-tile.is-selected text { fill: var(--ink); }
+.ov-tile.is-selected polygon { --c: var(--banana); fill-opacity: 0.55; }
+.ov-tile.is-selected circle { --c: var(--banana); }
 
 .photo-caption { padding: 10px 16px 14px; }

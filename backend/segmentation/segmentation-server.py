@@ -296,8 +296,11 @@ def _detect():
                 detections.mask[i].astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
             )
             if contours:
-                c = max(contours, key=cv2.contourArea)
-                approx = cv2.approxPolyDP(c, 0.02 * cv2.arcLength(c, True), True)
+                # Tiles are convex, so the hull drops the notches a mask picks
+                # up where tiles overlap, and a light simplification keeps
+                # the rounded corners in ~8-16 points.
+                c = cv2.convexHull(max(contours, key=cv2.contourArea))
+                approx = cv2.approxPolyDP(c, 0.008 * cv2.arcLength(c, True), True)
                 if len(approx) >= 3:
                     polygon = approx.reshape(-1, 2).tolist()
         class_name = model.names[class_id]

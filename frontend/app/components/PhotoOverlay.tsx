@@ -1,5 +1,17 @@
 "use client";
 
+import type { CSSProperties } from "react";
+// One colour per letter, spread round the colour wheel by the golden angle.
+// Letters are taken commonest first, so the letters that fill most of a photo
+// get the hues furthest apart. Same lightness and chroma for all, so no letter
+// shouts louder than another.
+const BY_FREQUENCY = "aitnesloukämvrjhypdögb";
+
+function letterColor(letter: string) {
+  const i = Math.max(0, BY_FREQUENCY.indexOf(letter));
+  return `oklch(0.76 0.15 ${(i * 137.508 + 25) % 360})`;
+}
+
 export type Photo = { url: string; width: number; height: number };
 
 export type OverlayTile = {
@@ -48,9 +60,14 @@ export function PhotoOverlay({
           const cy = top[1] + r * 0.55;
           const state = t.id === selected ? "is-selected" : t.doubtful ? "is-doubtful" : "";
           return (
-            <g key={t.id} className={`ov-tile ${state}`} onClick={() => onSelect(t.id)}>
-              <polygon points={points} strokeWidth={stroke} />
-              <circle cx={cx} cy={cy} r={r} />
+            <g
+              key={t.id}
+              className={`ov-tile ${state}`}
+              style={{ "--c": letterColor(t.letter) } as CSSProperties}
+              onClick={() => onSelect(t.id)}
+            >
+              <polygon points={points} strokeWidth={stroke} strokeDasharray={t.doubtful ? `${stroke * 3} ${stroke * 2}` : undefined} />
+              <circle cx={cx} cy={cy} r={r} strokeWidth={t.doubtful ? stroke * 1.6 : stroke * 0.8} />
               <text x={cx} y={cy} fontSize={r * 1.25} dy="0.36em">
                 {t.letter.toUpperCase()}
               </text>

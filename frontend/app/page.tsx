@@ -181,7 +181,10 @@ export default function Home() {
             found.map((t) => ({ id: nextId++, letter: t.letter, conf: t.confidence, shape: t.polygon }))
           ),
           photo: result.image_size
-            ? { url: URL.createObjectURL(result.image), width: result.image_size[0], height: result.image_size[1] }
+            ? // Show the original, full-resolution photo: the outlines are in the
+              // uploaded (downscaled) copy's pixels, but the SVG viewBox scales
+              // them onto any image with the same aspect ratio.
+              { url: URL.createObjectURL(file), width: result.image_size[0], height: result.image_size[1] }
             : null,
           solution: null,
           solvedFor: null,
