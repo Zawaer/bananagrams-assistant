@@ -152,6 +152,7 @@ if __name__ == "__main__":
     ap.add_argument("--device", default="cpu")
     ap.add_argument("--sets", default="test,valid,test_mosaic,valid_mosaic,test1,test2")
     ap.add_argument("--json")
+    ap.add_argument("--configs", help='only these, e.g. "0.8:0.5:1,0.5:0.5:1" (conf:nms:agnostic)')
     a = ap.parse_args()
     from ultralytics import YOLO
     model = YOLO(a.model, task="segment")
@@ -172,6 +173,10 @@ if __name__ == "__main__":
             raw[sn].append((gt, det))
     print(f"model={os.path.basename(a.model)} imgsz={a.imgsz} slice={a.slice} long={a.long} "
           f"device={a.device} mean_ms(test+valid)={1000 * np.mean(times):.0f}", flush=True)
-    results = evaluate(raw, names)
+    configs = CONFIGS
+    if a.configs:
+        configs = [(float(c), float(n), ag == "1")
+                   for c, n, ag in (x.split(":") for x in a.configs.split(","))]
+    results = evaluate(raw, names, configs)
     if a.json:
         json.dump({"mean_ms": 1000 * np.mean(times), "results": results}, open(a.json, "w"), indent=1)
