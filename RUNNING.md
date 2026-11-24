@@ -62,7 +62,7 @@ the homelab deployment does exactly that.
 
 Notes on model file:
 - Under Docker the model is downloaded from the GitHub release into the `models` volume on first start (override with `MODEL_DOWNLOAD_URL`).
-- Run by hand, the server looks for `image-segmentation/models/yolo11x-seg-200epochs-100images.onnx`, or set `MODEL_PATH`.
+- Run by hand, the server looks for `image-segmentation/models/yolo11x-seg-200epochs-100images-960.onnx` (then the older 640 export `yolo11x-seg-200epochs-100images.onnx`), or set `MODEL_PATH`. Both are on the GitHub release `models`.
 
 Manual (no Docker)
 
@@ -73,7 +73,7 @@ cd backend/segmentation
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-# ensure model is at ../../image-segmentation/models/yolo11x-seg-200epochs-100images.onnx
+# ensure model is at ../../image-segmentation/models/yolo11x-seg-200epochs-100images-960.onnx
 python3 segmentation-server.py
 ```
 

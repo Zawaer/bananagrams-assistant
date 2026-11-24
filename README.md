@@ -102,7 +102,7 @@ The **test** row is the honest number: 243 tile instances the model had no conta
 
 Caveat worth stating plainly: 10 images is a small test set, and all of it comes from the same tile set and shooting conditions. These numbers say the model has comfortably learned *these* tiles, not that it would generalise to a different Bananagrams set on a different table.
 
-In live use the server additionally discards anything under a 0.8 confidence threshold, which is why real runs report ~96-97% mean confidence.
+In live use the server runs the same weights exported at `imgsz=960` (`yolo11x-seg-200epochs-100images-960.onnx`), keeps detections at 0.5 confidence or more, and merges overlaps across classes (NMS IoU 0.5, so one tile read as two letters stays one tile). At 640, photos of the whole pool lose tiles: on `test1.jpg` (144 tiles, shrunk to 1600 px like the app) the old 640 / 0.8 setup found 135, the 960 / 0.5 one finds all 144. On 2x2 mosaics of the test photos (tiles half the size, a labelled stand-in for crowded photos) recall goes from 0.43 to 0.97. The labelled test split stays at recall 1.000 and 99% letter accuracy. Anything under 0.9 confidence is marked doubtful in the app. The tools behind these numbers are in `image-segmentation/tools/` (`sweep.py`).
 
 ### Solver success rate
 
@@ -238,7 +238,7 @@ bananagrams-assistant/
 │   ├── detect.py
 │   ├── export-onnx.py
 │   └── models/
-│       └── yolo11x-seg-200epochs-100images.onnx
+│       └── yolo11x-seg-200epochs-100images-960.onnx
 └── docs/                           # README media
 ```
 
@@ -248,7 +248,7 @@ bananagrams-assistant/
 
 ### Prerequisites
 
-- ONNX model at `image-segmentation/models/yolo11x-seg-200epochs-100images.onnx`
+- ONNX model at `image-segmentation/models/yolo11x-seg-200epochs-100images-960.onnx` (from the GitHub release `models`; the older 640 export `yolo11x-seg-200epochs-100images.onnx` also works)
 - Finnish wordlist at `backend/wordlist-parser/wordlist.txt`
 - g++ with C++17 and POSIX sockets (macOS/Linux), Python 3.8+, Node.js 18+
 
@@ -366,7 +366,7 @@ The request body may use raw UTF-8 or `\uXXXX` escapes for `ä` and `ö`. Both d
   "timing":      { "preprocess_ms": 12, "inference_ms": 930, "postprocess_ms": 452, "total_ms": 1394 },
   "yolo_timing": { "preprocess_ms": 2,  "inference_ms": 882, "postprocess_ms": 7 },
   "avg_confidence": 97,
-  "thresholds": { "nms": 0.8, "confidence": 0.8 }
+  "thresholds": { "nms": 0.5, "confidence": 0.5 }
 }
 ```
 
@@ -393,8 +393,8 @@ Each word is fetched from the site once (one request) and the answer kept in `DE
 
 | Where | Setting | Purpose |
 |---|---|---|
-| `backend/segmentation/segmentation-server.py` | `NMS_THRESHOLD = 0.8` | Suppress overlapping detections |
-| | `CONFIDENCE_THRESHOLD = 0.8` | Minimum detection score |
+| `backend/segmentation/segmentation-server.py` | `NMS_THRESHOLD = 0.5` | Suppress overlapping detections (across classes) |
+| | `CONFIDENCE_THRESHOLD = 0.5` | Minimum detection score |
 | | `MODEL_PATH` | ONNX model location |
 | `frontend/app/page.tsx` | `TILE_PRESETS` | Default hand-size options |
 | | `VALID_CHARS` | The 22 letters on the Finnish tile set |

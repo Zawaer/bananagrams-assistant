@@ -27,8 +27,8 @@ services:
     image: bananagrams/segmentation:latest
     environment:
       # Fetched once into the volume, then reused across restarts and rebuilds.
-      - MODEL_DOWNLOAD_URL=${MODEL_DOWNLOAD_URL:-https://github.com/Zawaer/bananagrams-assistant/releases/download/models/yolo11x-seg-200epochs-100images.onnx}
-      - MODEL_CACHE_PATH=/models/model.onnx
+      - MODEL_DOWNLOAD_URL=${MODEL_DOWNLOAD_URL:-https://github.com/Zawaer/bananagrams-assistant/releases/download/models/yolo11x-seg-200epochs-100images-960.onnx}
+      - MODEL_CACHE_DIR=/models
       # Drop the model from memory after this long without a photo.
       - IDLE_UNLOAD_SECONDS=${IDLE_UNLOAD_SECONDS:-600}
       # Word definitions (tap a word on the solved board) are fetched from

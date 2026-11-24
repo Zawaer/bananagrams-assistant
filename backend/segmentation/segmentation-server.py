@@ -3,6 +3,7 @@ import os
 import signal
 import threading
 import time
+import urllib.parse
 import urllib.request
 
 from flask import Flask, jsonify, request
@@ -16,9 +17,13 @@ import ks_define
 app = Flask(__name__)
 CORS(app)
 
-# Detection thresholds
-NMS_THRESHOLD = 0.8
-CONFIDENCE_THRESHOLD = 0.8
+# Detection thresholds. Measured with image-segmentation/tools/sweep.py: on
+# photos of the whole pool, 0.8 threw away real tiles the model was only 50-80%
+# sure of. Anything under 0.9 is marked doubtful in the app, so the extra tiles
+# this lets through are flagged for checking rather than trusted. NMS runs
+# across classes: one tile read as two letters is still one tile.
+NMS_THRESHOLD = 0.5
+CONFIDENCE_THRESHOLD = 0.5
 
 # Class name mapping: model class names -> actual letters (for solver)
 CLASS_NAME_TO_LETTER = {
@@ -85,16 +90,34 @@ CLASS_NAME_TO_LABEL = {
 #   MODEL_PATH                set explicitly
 #   ./model.onnx              mounted by docker-compose for local use
 #   ../../image-segmentation/models/...   running from the repo checkout
-#   MODEL_DOWNLOAD_URL        fetched once into MODEL_CACHE_PATH and kept there
+#   MODEL_DOWNLOAD_URL        fetched once into MODEL_CACHE_DIR and kept there
+#
+# The input size comes from the ONNX file itself (ultralytics reads it from the
+# export metadata), so the 640 and 960 models both work without a setting.
+
+# The same weights as the old file, exported at 960 instead of 640: at 640 the
+# tiles in a photo of the whole pool are too small and some go unseen (135 of
+# 144 found on test1.jpg, against all 144 at 960). A fine-tune at 960 was tried
+# and read letters slightly better but found fewer tiles in crowded photos.
+MODEL_FILE = "yolo11x-seg-200epochs-100images-960.onnx"
+OLD_MODEL_FILE = "yolo11x-seg-200epochs-100images.onnx"
 
 MODEL_URL = os.environ.get("MODEL_DOWNLOAD_URL")
-MODEL_CACHE_PATH = os.environ.get("MODEL_CACHE_PATH", "/tmp/model.onnx")
+# Downloads are cached under the URL's file name, so pointing MODEL_DOWNLOAD_URL
+# at a new model fetches it instead of reusing the old one from the volume.
+MODEL_CACHE_DIR = os.environ.get(
+    "MODEL_CACHE_DIR", os.path.dirname(os.environ.get("MODEL_CACHE_PATH", "/tmp/model.onnx"))
+)
+MODEL_CACHE_PATH = os.path.join(
+    MODEL_CACHE_DIR, os.path.basename(urllib.parse.urlparse(MODEL_URL or "").path) or "model.onnx"
+)
 IDLE_UNLOAD_SECONDS = int(os.environ.get("IDLE_UNLOAD_SECONDS", "0"))  # 0 = never
 
 LOCAL_MODEL_PATHS = [
     os.environ.get("MODEL_PATH", ""),
     "./model.onnx",
-    "../../image-segmentation/models/yolo11x-seg-200epochs-100images.onnx",
+    f"../../image-segmentation/models/{MODEL_FILE}",
+    f"../../image-segmentation/models/{OLD_MODEL_FILE}",
 ]
 
 _model = None
@@ -128,7 +151,7 @@ def _find_model_path():
         return _download_model()
     raise RuntimeError(
         "Model file not found! "
-        "For local development: Ensure ../../image-segmentation/models/yolo11x-seg-200epochs-100images.onnx exists. "
+        f"For local development: Ensure ../../image-segmentation/models/{MODEL_FILE} exists. "
         "For production: Set MODEL_DOWNLOAD_URL to download it from the GitHub release."
     )
 
@@ -268,7 +291,9 @@ def _detect():
     # ──── INFERENCE ────
     model = get_model()
     inference_start = time.time()
-    results = model(image)
+    # ultralytics' own per-class NMS and its 0.25 floor run first; ours below
+    # then merges across classes and applies the real threshold.
+    results = model(image, conf=min(0.25, CONFIDENCE_THRESHOLD), max_det=300)
     detections = sv.Detections.from_ultralytics(results[0])
     inference_time_ms = round((time.time() - inference_start) * 1000)
     
@@ -284,7 +309,7 @@ def _detect():
     postprocess_start = time.time()
     
     # Apply Non-Maximum Suppression
-    detections = detections.with_nms(threshold=NMS_THRESHOLD)
+    detections = detections.with_nms(threshold=NMS_THRESHOLD, class_agnostic=True)
 
     # Filter low-confidence detections
     if CONFIDENCE_THRESHOLD > 0:
