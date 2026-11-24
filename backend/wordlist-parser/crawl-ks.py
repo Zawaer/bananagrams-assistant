@@ -1,5 +1,13 @@
 """Copy the whole Kielitoimiston sanakirja into a local cache, for personal use.
 
+NOT IN USE. Tried in November 2026: the site allows about 25 requests per
+burst and then blocks for most of an hour, about 25-100 entries an hour
+sustained, so the whole dictionary would take months, and pushing harder
+risks blocking the homelab's own live lookups. The app instead looks words
+up one at a time when tapped and caches them (backend/segmentation/
+ks_define.py), and can read a local copy through KS_LOCAL_DIR if one ever
+exists. Kept for reference.
+
 1. List every headword with the site's autocomplete (per first letter; when a
    prefix has more hits than one listing returns, per two-letter prefix,
    and so on). Saved to <cache>/headwords.json.
